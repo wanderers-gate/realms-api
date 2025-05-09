@@ -1,0 +1,226 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5.1.0
+  aws-s3: circleci/aws-s3@4.0.0
+
+commands:
+  assume-role:
+    description: "Assume AWS IAM role for deployment"
+    parameters:
+      role-arn:
+        type: string
+        description: "ARN of the IAM role to assume"
+    steps:
+      - run:
+          name: Assume AWS Role
+          command: |
+            # Install AWS CLI if not already installed
+            if ! command -v aws &> /dev/null; then
+              curl "https://awscli.amazonaws.com/AWSCLIV2.pkg" -o "AWSCLIV2.pkg"
+              sudo installer -pkg AWSCLIV2.pkg -target /
+            fi
+            
+            # Assume the role and export credentials
+            CREDENTIALS=$(aws sts assume-role --role-arn << parameters.role-arn >> --role-session-name CircleCI)
+            
+            # Export credentials to environment
+            echo "export AWS_ACCESS_KEY_ID=$(echo $CREDENTIALS | jq -r .Credentials.AccessKeyId)" >> $BASH_ENV
+            echo "export AWS_SECRET_ACCESS_KEY=$(echo $CREDENTIALS | jq -r .Credentials.SecretAccessKey)" >> $BASH_ENV
+            echo "export AWS_SESSION_TOKEN=$(echo $CREDENTIALS | jq -r .Credentials.SessionToken)" >> $BASH_ENV
+            
+            # Source the environment to make credentials available
+            source $BASH_ENV
+            
+            echo "Successfully assumed role: << parameters.role-arn >>"
+
+  store-version:
+    description: "Extract version number from release tag and feature branch name"
+    steps:
+      - run:
+          name: Store version
+          command: |
+            # Extract version from tag
+            if [[ $CIRCLE_TAG =~ ^release/([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              echo "export VERSION=${BASH_REMATCH[1]}-SNAPSHOT" >> $BASH_ENV
+              source $BASH_ENV
+              echo "Version set to: $VERSION"
+            elif [[ $CIRCLE_BRANCH =~ ^feature/(.+)$ ]]; then
+              echo "export BRANCH_NAME=${BASH_REMATCH[1]}-SNAPSHOT" >> $BASH_ENV
+              source $BASH_ENV
+              echo "Branch name set to: $BRANCH_NAME"
+            else
+              echo "Invalid tag or branch name format. Expected release/x.x.x or feature/x.x.x"
+              exit 1
+            fi
+
+  deploy-to-env:
+    description: "Deploy to specified environment"
+    parameters:
+      environment:
+        type: string
+        description: "Environment to deploy to (qa, staging, prod)"
+      role-arn:
+        type: string
+        description: "ARN of the IAM role to assume for deployment"
+    steps:
+      - attach_workspace:
+          at: .
+      - assume-role:
+          role-arn: << parameters.role-arn >>
+      - store-version
+      - aws-s3/sync:
+          from: dist
+          to: 's3://realms-libs-<< parameters.environment >>/${VERSION}'
+          arguments: |
+            --acl public-read
+            --cache-control "max-age=86400"
+
+jobs:
+  install:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - checkout
+      
+      - node/install-packages:
+          pkg-manager: npm
+      
+      - persist_to_workspace:
+          root: .
+          paths:
+            - node_modules
+
+  lint:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - checkout
+      
+      - attach_workspace:
+          at: .
+      
+      - run:
+          name: Lint
+          command: npm run lint
+
+  test:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - checkout
+      
+      - attach_workspace:
+          at: .
+      
+      - run:
+          name: Run tests
+          command: npm test
+
+  build:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - checkout
+      
+      - attach_workspace:
+          at: .
+      
+      - run:
+          name: Build
+          command: npm run build
+      
+      - persist_to_workspace:
+          root: .
+          paths:
+            - dist
+
+  deploy-qa:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - deploy-to-env:
+          environment: qa
+          role-arn: ${AWS_ROLE_ARN_QA}
+
+  deploy-staging:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - deploy-to-env:
+          environment: staging
+          role-arn: ${AWS_ROLE_ARN_STAGING}
+
+  deploy-prod:
+    docker:
+      - image: cimg/node:20.10
+    steps:
+      - deploy-to-env:
+          environment: prod
+          role-arn: ${AWS_ROLE_ARN_PROD}
+
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - install:
+          filters:
+            tags:
+              only: /^release\/[0-9]+\.[0-9]+\.[0-9]+$/
+            branches:
+              only: /^feature\/.+$/
+      
+      - lint:
+          requires:
+            - install
+          filters:
+            tags:
+              only: /^release\/[0-9]+\.[0-9]+\.[0-9]+$/
+            branches:
+              only: /^feature\/.+$/
+      
+      - test:
+          requires:
+            - install
+          filters:
+            tags:
+              only: /^release\/[0-9]+\.[0-9]+\.[0-9]+$/
+            branches:
+              only: /^feature\/.+$/
+      
+      - build:
+          requires:
+            - lint
+            - test
+          filters:
+            tags:
+              only: /^release\/[0-9]+\.[0-9]+\.[0-9]+$/
+            branches:
+              only: /^feature\/.+$/
+      
+      - deploy-qa:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /^release\/[0-9]+\.[0-9]+\.[0-9]+$/
+            branches:
+              only: /^feature\/.+$/
+      
+      - deploy-staging:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /^release\/[0-9]+\.[0-9]+\.[0-9]+$/
+            branches:
+              ignore: /.*/
+      
+      - deploy-prod:
+          requires:
+            - build
+          filters:
+            tags:
+              only: /^release\/[0-9]+\.[0-9]+\.[0-9]+$/
+            branches:
+              ignore: /.*/ 
