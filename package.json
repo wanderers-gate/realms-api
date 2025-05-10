@@ -8,7 +8,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts'",
-    "pipelint:lint": "eslint 'src/**/*.ts' --format json --output-file eslint-results.json && tsc --noEmit",
+    "pipeline:lint": "eslint 'src/**/*.ts' --format json --output-file eslint-results.json && tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
