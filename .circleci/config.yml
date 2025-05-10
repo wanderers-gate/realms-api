@@ -48,7 +48,11 @@ commands:
           command: |
             aws s3 sync dist/ s3://realms-libs-<< parameters.environment >>/${CIRCLE_TAG:+${VERSION}}${CIRCLE_BRANCH:+${BRANCH_NAME}}/ \
               --profile realms \
-              --acl public-read
+              --acl public-read \
+              --exclude "server.js" \
+              --exclude "server.js.map" \
+              --include "server.*.js" \
+              --include "server.*.js.map"
 
 jobs:
   install:
