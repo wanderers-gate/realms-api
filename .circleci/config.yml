@@ -72,7 +72,7 @@ jobs:
           at: .
       - run:
           name: Lint
-          command: npm run lint
+          command: npm run piepline:lint
 
   test:
     docker:
@@ -83,7 +83,7 @@ jobs:
           at: .
       - run:
           name: Run tests
-          command: npm test
+          command: npm run pipeline:test
 
   build:
     docker:

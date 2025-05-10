@@ -26,6 +26,7 @@ coverage/
 # Logs
 logs/
 *.log
+eslint-results.json
 
 # TypeScript
 *.tsbuildinfo
