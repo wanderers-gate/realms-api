@@ -1,9 +1,17 @@
-import app from './index';
 import config from './config/config';
 import connectDB from './config/database';
+import logger from './utils/logger';
 
-connectDB();
+import app from './index';
 
-app.listen(config.port, () => {
-  console.log(`Server running on port ${config.port}`);
+const startServer = async (): Promise<void> => {
+  await connectDB();
+  app.listen(config.port, () => {
+    logger.info(`Server is running on port ${config.port}`);
+  });
+};
+
+startServer().catch((error) => {
+  logger.error('Failed to start server:', error);
+  process.exit(1);
 });
