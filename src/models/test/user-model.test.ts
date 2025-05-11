@@ -1,13 +1,15 @@
+import { MongoMemoryServer } from 'mongodb-memory-server';
 import mongoose from 'mongoose';
 import { UserModel } from '../user-model';
 
 describe('User Model', () => {
+  let mongoServer: MongoMemoryServer;
+
   beforeAll(async () => {
     try {
-      await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/test', {
-        serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-        socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
-      });
+      mongoServer = await MongoMemoryServer.create();
+      const mongoUri = mongoServer.getUri();
+      await mongoose.connect(mongoUri);
     } catch (error) {
       console.error('MongoDB connection error:', error);
       throw error;
@@ -18,6 +20,7 @@ describe('User Model', () => {
     try {
       await mongoose.connection.dropDatabase();
       await mongoose.connection.close();
+      await mongoServer.stop();
     } catch (error) {
       console.error('Error during cleanup:', error);
       throw error;
