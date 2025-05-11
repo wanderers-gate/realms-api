@@ -12,20 +12,26 @@ jest.mock('../../models/user-model');
 jest.mock('../../serializers/user.serializer');
 jest.mock('jsonwebtoken');
 
-const app = express();
-app.use(jsonApiMiddleware);
-app.use(express.json());
-app.post('/register', register);
-app.post('/login', login);
-app.post('/logout', logout);
+let app: express.Application;
+
+beforeAll(() => {
+  app = express();
+  app.use(jsonApiMiddleware);
+  app.use(express.json());
+  app.post('/register', register);
+  app.post('/login', login);
+  app.post('/logout', logout);
+});
+
+afterAll(async () => {
+  // Close mongoose connection
+  await mongoose.connection.close();
+  // Clear all mocks
+  jest.clearAllMocks();
+});
 
 describe('Auth Controller', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  afterAll(async () => {
-    await mongoose.connection.close();
     jest.clearAllMocks();
   });
 
