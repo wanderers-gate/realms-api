@@ -6,6 +6,7 @@ import { serializeUser } from '../../serializers/user.serializer';
 import jwt from 'jsonwebtoken';
 import { jsonApiMiddleware } from '../../middleware/json-api';
 import mongoose from 'mongoose';
+import http from 'http';
 
 // Mock dependencies
 jest.mock('../../models/user-model');
@@ -13,6 +14,7 @@ jest.mock('../../serializers/user.serializer');
 jest.mock('jsonwebtoken');
 
 let app: express.Application;
+let server: http.Server | null = null;
 
 beforeAll(() => {
   app = express();
@@ -33,6 +35,15 @@ afterAll(async () => {
 describe('Auth Controller', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  afterEach((done) => {
+    if (server) {
+      server.close(done);
+      server = null;
+    } else {
+      done();
+    }
   });
 
   describe('register', () => {
