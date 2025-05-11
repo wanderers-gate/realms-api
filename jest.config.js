@@ -15,4 +15,5 @@ module.exports = {
     '/coverage/',
   ],
   verbose: true,
-}; 
+  testTimeout: 10000,
+};

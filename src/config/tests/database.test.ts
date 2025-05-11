@@ -23,6 +23,12 @@ describe('Database Connection', () => {
     console.error = originalConsole.error;
   });
 
+  afterAll(async () => {
+    if (mongoose.connection && mongoose.connection.close) {
+      await mongoose.connection.close();
+    }
+  });
+
   it('should connect to MongoDB successfully', async () => {
     const mockConnect = jest.spyOn(mongoose, 'connect').mockResolvedValue(mongoose);
 
