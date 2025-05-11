@@ -1,10 +1,10 @@
 import type { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import { UserModel } from '../../models/user-model';
-import { register, login, logout } from '../auth.controller';
+import type { UserDocument } from '../../models/user-model';
 import { serializeUser } from '../../serializers/user.serializer';
 import { generateToken } from '../../utils/jwt';
-import type { UserDocument } from '../../models/user-model';
+import { login, logout, register } from '../auth.controller';
 
 // Mock dependencies
 jest.mock('../../models/user-model');
@@ -170,7 +170,7 @@ describe('Auth Controller', () => {
       expect(mockResponse.clearCookie).toHaveBeenCalledWith('token', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict'
+        sameSite: 'strict',
       });
       expect(mockResponse.status).toHaveBeenCalledWith(204);
       expect(mockResponse.send).toHaveBeenCalled();
@@ -195,9 +195,9 @@ describe('Auth Controller', () => {
       mockUser.tokenVersion = firstTokenVersion + 1;
       (UserModel.findById as jest.Mock).mockResolvedValue(mockUser);
       // Simulate decoded token with old version
-      (require('../../utils/jwt').verifyJwt as jest.Mock).mockReturnValue({ 
-        userId: mockUser._id.toString(), 
-        tokenVersion: firstTokenVersion 
+      (require('../../utils/jwt').verifyJwt as jest.Mock).mockReturnValue({
+        userId: mockUser._id.toString(),
+        tokenVersion: firstTokenVersion,
       });
 
       // Call authenticate middleware

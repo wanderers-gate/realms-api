@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { UserModel } from '../models/user-model';
-import { generateToken } from '../utils/jwt';
 import { serializeUser } from '../serializers/user.serializer';
+import { generateToken } from '../utils/jwt';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -136,7 +136,7 @@ export const logout = (_req: Request, res: Response): void => {
   res.clearCookie('token', {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict'
+    sameSite: 'strict',
   });
   res.status(204).send();
 };

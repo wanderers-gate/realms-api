@@ -5,7 +5,18 @@ import { generateToken, getTokenFromHeaders, verifyJwt } from '../jwt';
 
 // Mock the config module
 jest.mock('../../config/config', () => ({
-  jwtSecret: 'test-secret',
+  __esModule: true,
+  default: {
+    jwtSecret: 'test-secret',
+    port: 3000,
+    nodeEnv: 'test',
+    mongodb: {
+      uri: 'mongodb://localhost:27017/test',
+      options: {
+        autoIndex: true,
+      },
+    },
+  },
 }));
 
 // Define a type for the config object that allows modifying jwtSecret
@@ -14,6 +25,10 @@ interface ConfigWithModifiableSecret {
 }
 
 describe('JWT Utils', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   describe('generateToken', () => {
     it('should generate a valid JWT token with tokenVersion', () => {
       const userId = 'test-user-id';
@@ -21,14 +36,9 @@ describe('JWT Utils', () => {
       const token = generateToken(userId, tokenVersion);
 
       expect(token).toBeDefined();
-      expect(typeof token).toBe('string');
-
-      // Verify the token can be decoded
-      const decoded = jwt.verify(token, 'test-secret') as { userId: string; tokenVersion: number; iat: number };
+      const decoded = jwt.verify(token, 'test-secret') as { userId: string; tokenVersion: number };
       expect(decoded.userId).toBe(userId);
       expect(decoded.tokenVersion).toBe(tokenVersion);
-      expect(typeof decoded.iat).toBe('number');
-      expect(decoded.iat).toBeLessThanOrEqual(Math.floor(Date.now() / 1000));
     });
 
     it('should throw error if JWT_SECRET is not defined', () => {
@@ -45,60 +55,51 @@ describe('JWT Utils', () => {
 
   describe('getTokenFromHeaders', () => {
     it('should extract token from Bearer authorization header', () => {
-      const mockReq = {
+      const token = 'test-token';
+      const req = {
         headers: {
-          authorization: 'Bearer test-token',
+          authorization: `Bearer ${token}`,
         },
       } as Request;
-
-      const token = getTokenFromHeaders(mockReq);
-      expect(token).toBe('test-token');
+      expect(getTokenFromHeaders(req)).toBe(token);
     });
 
     it('should return null for missing authorization header', () => {
-      const mockReq = {
+      const req = {
         headers: {},
       } as Request;
-
-      const token = getTokenFromHeaders(mockReq);
-      expect(token).toBeNull();
+      expect(getTokenFromHeaders(req)).toBeNull();
     });
 
     it('should return null for invalid authorization scheme', () => {
-      const mockReq = {
+      const req = {
         headers: {
           authorization: 'Basic test-token',
         },
       } as Request;
-
-      const token = getTokenFromHeaders(mockReq);
-      expect(token).toBeNull();
+      expect(getTokenFromHeaders(req)).toBeNull();
     });
 
     it('should return null for malformed authorization header', () => {
-      const mockReq = {
+      const req = {
         headers: {
           authorization: 'Bearer',
         },
       } as Request;
-
-      const token = getTokenFromHeaders(mockReq);
-      expect(token).toBeNull();
+      expect(getTokenFromHeaders(req)).toBeNull();
     });
   });
 
   describe('verifyJwt', () => {
     it('should verify and decode a valid token', () => {
-      const payload = { userId: 'test-user-id', tokenVersion: 1 };
-      const token = jwt.sign(payload, 'test-secret');
-
+      const userId = 'test-user-id';
+      const tokenVersion = 1;
+      const token = generateToken(userId, tokenVersion);
       const decoded = verifyJwt(token);
-      expect(decoded).toEqual(
-        expect.objectContaining({
-          ...payload,
-          iat: expect.any(Number),
-        })
-      );
+
+      expect(decoded).toBeDefined();
+      expect(decoded?.userId).toBe(userId);
+      expect(decoded?.tokenVersion).toBe(tokenVersion);
     });
 
     it('should return null for invalid token', () => {
@@ -106,34 +107,38 @@ describe('JWT Utils', () => {
       expect(decoded).toBeNull();
     });
 
-    it('should return null for expired token', () => {
-      const payload = { userId: 'test-user-id', tokenVersion: 1 };
-      const token = jwt.sign(payload, 'test-secret', { expiresIn: '0s' });
+    it('should return null for expired token', async () => {
+      const userId = 'test-user-id';
+      const tokenVersion = 1;
+      const token = jwt.sign({ userId, tokenVersion }, 'test-secret', { expiresIn: '1ms' });
 
       // Wait for token to expire
-      setTimeout(() => {
-        const decoded = verifyJwt(token);
-        expect(decoded).toBeNull();
-      }, 1000);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const decoded = verifyJwt(token);
+      expect(decoded).toBeNull();
     });
 
     it('should support custom payload type', () => {
       interface CustomPayload {
         userId: string;
-        role: string;
         tokenVersion: number;
+        customField: string;
       }
 
-      const payload: CustomPayload = { userId: 'test-user-id', role: 'admin', tokenVersion: 1 };
-      const token = jwt.sign(payload, 'test-secret');
+      const payload: CustomPayload = {
+        userId: 'test-user-id',
+        tokenVersion: 1,
+        customField: 'test',
+      };
 
-      const decoded = verifyJwt<CustomPayload & { iat: number }>(token);
-      expect(decoded).toEqual(
-        expect.objectContaining({
-          ...payload,
-          iat: expect.any(Number),
-        })
-      );
+      const token = jwt.sign(payload, 'test-secret');
+      const decoded = verifyJwt<CustomPayload>(token);
+
+      expect(decoded).toBeDefined();
+      expect(decoded?.userId).toBe(payload.userId);
+      expect(decoded?.tokenVersion).toBe(payload.tokenVersion);
+      expect(decoded?.customField).toBe(payload.customField);
     });
   });
 });

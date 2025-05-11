@@ -1,6 +1,6 @@
-import type { Request, Response, NextFunction } from 'express';
-import { verifyJwt } from '../utils/jwt';
+import type { NextFunction, Request, Response } from 'express';
 import { UserModel } from '../models/user-model';
+import { verifyJwt } from '../utils/jwt';
 
 export const authenticate = async (
   req: Request,
@@ -60,7 +60,7 @@ export const authenticate = async (
     console.log('[AUTH] Token versions:', {
       decodedVersion: decoded.tokenVersion,
       userVersion: user.tokenVersion,
-      userId: user._id.toString()
+      userId: user._id.toString(),
     });
 
     // Check if token version matches
@@ -69,7 +69,7 @@ export const authenticate = async (
       console.error('[AUTH] Token version mismatch:', {
         decodedVersion: decoded.tokenVersion,
         userVersion: user.tokenVersion,
-        userId: user._id.toString()
+        userId: user._id.toString(),
       });
       res.status(401).json({
         errors: [
@@ -88,7 +88,10 @@ export const authenticate = async (
     next();
   } catch (error) {
     // eslint-disable-next-line no-console
-    console.error('[AUTH] Error during authentication:', error instanceof Error ? error.message : 'Unknown error');
+    console.error(
+      '[AUTH] Error during authentication:',
+      error instanceof Error ? error.message : 'Unknown error'
+    );
     res.status(500).json({
       errors: [
         {
@@ -99,4 +102,4 @@ export const authenticate = async (
       ],
     });
   }
-}; 
+};

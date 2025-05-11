@@ -1,6 +1,6 @@
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
-import cookieParser from 'cookie-parser';
 import { authenticate } from './middleware/auth.middleware';
 import { jsonApiMiddleware } from './middleware/json-api';
 import authRouter from './routes/authRouter';
@@ -10,10 +10,12 @@ const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    credentials: true,
+  })
+);
 app.use(jsonApiMiddleware);
 
 // Public routes
