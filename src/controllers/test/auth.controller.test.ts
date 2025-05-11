@@ -1,9 +1,9 @@
-import { register, login, logout } from '../auth.controller';
-import { UserModel } from '../../models/user-model';
-import { serializeUser } from '../../serializers/user.serializer';
+import type { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
-import type { Request, Response } from 'express';
+import { UserModel } from '../../models/user-model';
+import { serializeUser } from '../../serializers/user.serializer';
+import { login, logout, register } from '../auth.controller';
 
 // Mock dependencies
 jest.mock('../../models/user-model');
@@ -43,7 +43,7 @@ describe('Auth Controller', () => {
     if (mongoose.connection.readyState !== 0) {
       await mongoose.connection.close();
     }
-    
+
     // Clear all mocks
     jest.clearAllMocks();
   });
@@ -64,7 +64,9 @@ describe('Auth Controller', () => {
       expect(UserModel.create).toHaveBeenCalledWith(mockRequest.body);
       expect(serializeUser).toHaveBeenCalled();
       expect(mockResponse.status).toHaveBeenCalledWith(201);
-      expect(mockResponse.json).toHaveBeenCalledWith({ data: { _id: '1', email: 'test@example.com' } });
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        data: { _id: '1', email: 'test@example.com' },
+      });
     });
 
     it('should not register if user exists', async () => {

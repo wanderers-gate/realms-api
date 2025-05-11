@@ -1,5 +1,5 @@
-import jwt, { type JwtPayload } from 'jsonwebtoken';
 import type { Request } from 'express';
+import jwt, { type JwtPayload } from 'jsonwebtoken';
 import config from '../config/config';
 
 export const generateToken = (userId: string): string => {

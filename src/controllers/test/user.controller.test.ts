@@ -1,9 +1,9 @@
 import type { Request, Response } from 'express';
 import { Types } from 'mongoose';
+import mongoose from 'mongoose';
 import { UserModel } from '../../models/user-model';
 import { deserializeUser, serializeUser } from '../../serializers/user.serializer';
 import { create, destroy, index, show, update } from '../user.controller';
-import mongoose from 'mongoose';
 
 // Mock dependencies
 jest.mock('../../models/user-model');

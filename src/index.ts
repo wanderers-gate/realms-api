@@ -1,7 +1,7 @@
 import cors from 'cors';
 import express from 'express';
-import { jsonApiMiddleware } from './middleware/json-api';
 import { authenticateJwt } from './middleware/authenticate';
+import { jsonApiMiddleware } from './middleware/json-api';
 import authRouter from './routes/authRouter';
 import userRouter from './routes/userRouter';
 

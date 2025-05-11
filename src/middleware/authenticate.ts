@@ -1,5 +1,5 @@
-import type { Request, Response, NextFunction } from 'express';
-import { verifyJwt, getTokenFromHeaders } from '../utils/jwt';
+import type { NextFunction, Request, Response } from 'express';
+import { getTokenFromHeaders, verifyJwt } from '../utils/jwt';
 
 export interface AuthenticatedRequest<T = Record<string, unknown>> extends Request {
   user?: T;
