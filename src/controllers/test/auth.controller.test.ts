@@ -13,6 +13,7 @@ jest.mock('../../serializers/user.serializer');
 jest.mock('jsonwebtoken');
 
 let app: express.Application;
+let req: ReturnType<typeof request>;
 
 beforeAll(async () => {
   app = express();
@@ -21,6 +22,9 @@ beforeAll(async () => {
   app.post('/register', register);
   app.post('/login', login);
   app.post('/logout', logout);
+  
+  // Create a single request instance
+  req = request(app);
 });
 
 afterAll(async () => {
@@ -28,6 +32,7 @@ afterAll(async () => {
   if (mongoose.connection.readyState !== 0) {
     await mongoose.connection.close();
   }
+  
   // Clear all mocks
   jest.clearAllMocks();
 });
@@ -45,7 +50,7 @@ describe('Auth Controller', () => {
         data: { _id: '1', email: 'test@example.com' },
       });
 
-      const res = await request(app)
+      const res = await req
         .post('/register')
         .send({ email: 'test@example.com', password: 'password' });
 
@@ -56,7 +61,7 @@ describe('Auth Controller', () => {
     it('should not register if user exists', async () => {
       (UserModel.findOne as jest.Mock).mockResolvedValue({ _id: '1', email: 'test@example.com' });
 
-      const res = await request(app)
+      const res = await req
         .post('/register')
         .send({ email: 'test@example.com', password: 'password' });
 
@@ -78,7 +83,7 @@ describe('Auth Controller', () => {
       });
       (jwt.sign as jest.Mock).mockReturnValue('mocktoken');
 
-      const res = await request(app)
+      const res = await req
         .post('/login')
         .send({ email: 'test@example.com', password: 'password' });
 
@@ -90,7 +95,7 @@ describe('Auth Controller', () => {
     it('should not login with invalid credentials', async () => {
       (UserModel.findOne as jest.Mock).mockResolvedValue(null);
 
-      const res = await request(app)
+      const res = await req
         .post('/login')
         .send({ email: 'test@example.com', password: 'wrong' });
 
@@ -101,7 +106,7 @@ describe('Auth Controller', () => {
 
   describe('logout', () => {
     it('should clear the token cookie', async () => {
-      const res = await request(app).post('/logout');
+      const res = await req.post('/logout');
       expect(res.status).toBe(200);
       expect(res.body.message).toBe('Logged out successfully');
     });
