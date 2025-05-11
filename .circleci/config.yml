@@ -87,7 +87,7 @@ jobs:
           at: .
       - run:
           name: Run tests
-          command: npm run pipeline:test --detectOpenHandles
+          command: npm run pipeline:test -- --detectOpenHandles
 
   build:
     docker:
