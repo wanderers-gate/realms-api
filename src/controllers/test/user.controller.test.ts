@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { UserModel } from '../../models/user-model';
 import { deserializeUser, serializeUser } from '../../serializers/user.serializer';
 import { create, destroy, index, show, update } from '../user.controller';
+import mongoose from 'mongoose';
 
 // Mock dependencies
 jest.mock('../../models/user-model');
@@ -24,6 +25,13 @@ describe('User Controller', () => {
       jsonApiError: jest.fn(),
     } as unknown as Response;
     jest.clearAllMocks();
+  });
+
+  afterAll(async () => {
+    // Close mongoose connection if it exists
+    if (mongoose.connection?.readyState !== 0) {
+      await mongoose.connection.close();
+    }
   });
 
   describe('index', () => {
