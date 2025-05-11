@@ -46,7 +46,7 @@ commands:
       - run:
           name: Sync to S3
           command: |
-            aws s3 sync dist/ s3://realms-libs-<< parameters.environment >>/${CIRCLE_TAG:+${VERSION}}${CIRCLE_BRANCH:+${BRANCH_NAME}}/ \
+            aws s3 sync dist/ s3://realms-libs-<< parameters.environment >>/realms-api/${CIRCLE_TAG:+${VERSION}}${CIRCLE_BRANCH:+${BRANCH_NAME}}/ \
               --profile realms \
               --acl public-read \
               --exclude "server.js" \
