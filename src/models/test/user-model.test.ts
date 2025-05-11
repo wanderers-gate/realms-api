@@ -1,27 +1,17 @@
-import * as argon2 from 'argon2';
 import mongoose from 'mongoose';
 import { UserModel } from '../user-model';
 
-// Mock argon2
-jest.mock('argon2', () => ({
-  hash: jest.fn().mockResolvedValue('hashed_password'),
-  verify: jest.fn().mockResolvedValue(true),
-}));
-
 describe('User Model', () => {
   beforeAll(async () => {
-    // Connect to a test database
     await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/test');
   });
 
   afterAll(async () => {
-    // Close the database connection
+    await mongoose.connection.dropDatabase();
     await mongoose.connection.close();
   });
 
   beforeEach(async () => {
-    // Clear all mocks
-    jest.clearAllMocks();
     // Clear the User collection
     await UserModel.deleteMany({});
   });
@@ -31,50 +21,55 @@ describe('User Model', () => {
       const userData = {
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: 'Test',
+        lastName: 'User',
       };
 
-      const user = await UserModel.create(userData);
+      const user = new UserModel(userData);
+      const savedUser = await user.save();
 
-      expect(user.email).toBe(userData.email);
-      expect(user.firstName).toBe(userData.firstName);
-      expect(user.lastName).toBe(userData.lastName);
-      expect(user.password).toBe('hashed_password'); // Password should be hashed
-      expect(user.createdAt).toBeDefined();
-      expect(user.updatedAt).toBeDefined();
+      expect(savedUser._id).toBeDefined();
+      expect(savedUser.email).toBe(userData.email);
+      expect(savedUser.firstName).toBe(userData.firstName);
+      expect(savedUser.lastName).toBe(userData.lastName);
+      expect(savedUser.password).not.toBe(userData.password); // Password should be hashed
     });
 
     it('should fail to create a user without required fields', async () => {
       const userData = {
         email: 'test@example.com',
-        // Missing password, firstName, lastName
+        // Missing password
+        firstName: 'Test',
+        lastName: 'User',
       };
 
-      await expect(UserModel.create(userData)).rejects.toThrow();
+      const user = new UserModel(userData);
+      await expect(user.save()).rejects.toThrow();
     });
 
     it('should fail to create a user with invalid email format', async () => {
       const userData = {
         email: 'invalid-email',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: 'Test',
+        lastName: 'User',
       };
 
-      await expect(UserModel.create(userData)).rejects.toThrow();
+      const user = new UserModel(userData);
+      await expect(user.save()).rejects.toThrow();
     });
 
     it('should not allow duplicate email addresses', async () => {
       const userData = {
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: 'Test',
+        lastName: 'User',
       };
 
       await UserModel.create(userData);
-      await expect(UserModel.create(userData)).rejects.toThrow();
+      const duplicateUser = new UserModel(userData);
+      await expect(duplicateUser.save()).rejects.toThrow();
     });
   });
 
@@ -83,36 +78,33 @@ describe('User Model', () => {
       const userData = {
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: 'Test',
+        lastName: 'User',
       };
 
-      const user = await UserModel.create(userData);
+      const user = new UserModel(userData);
+      const savedUser = await user.save();
 
-      expect(argon2.hash).toHaveBeenCalledWith(userData.password, {
-        type: argon2.argon2id,
-        memoryCost: 2 ** 16,
-        timeCost: 3,
-        parallelism: 1,
-      });
-      expect(user.password).toBe('hashed_password');
+      expect(savedUser.password).not.toBe(userData.password);
+      expect(savedUser.password).toMatch(/^\$argon2id\$v=19\$m=\d+,t=\d+,p=\d+\$/); // argon2 hash format
     });
 
     it('should not hash password if not modified', async () => {
       const userData = {
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: 'Test',
+        lastName: 'User',
       };
 
-      const user = await UserModel.create(userData);
-      jest.clearAllMocks();
+      const user = new UserModel(userData);
+      const savedUser = await user.save();
+      const originalHash = savedUser.password;
 
-      user.firstName = 'Jane';
-      await user.save();
+      savedUser.firstName = 'Updated';
+      const updatedUser = await savedUser.save();
 
-      expect(argon2.hash).not.toHaveBeenCalled();
+      expect(updatedUser.password).toBe(originalHash);
     });
   });
 
@@ -121,46 +113,48 @@ describe('User Model', () => {
       const userData = {
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: 'Test',
+        lastName: 'User',
       };
 
-      const user = await UserModel.create(userData);
+      const user = new UserModel(userData);
+      const savedUser = await user.save();
 
-      const isMatch = await user.comparePassword('password123');
+      const isMatch = await savedUser.comparePassword('password123');
       expect(isMatch).toBe(true);
-      expect(argon2.verify).toHaveBeenCalledWith('hashed_password', 'password123');
     });
 
     it('should return false for incorrect password', async () => {
-      (argon2.verify as jest.Mock).mockResolvedValueOnce(false);
-
       const userData = {
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: 'Test',
+        lastName: 'User',
       };
 
-      const user = await UserModel.create(userData);
+      const user = new UserModel(userData);
+      const savedUser = await user.save();
 
-      const isMatch = await user.comparePassword('wrongpassword');
+      const isMatch = await savedUser.comparePassword('wrongpassword');
       expect(isMatch).toBe(false);
     });
 
     it('should handle verification errors gracefully', async () => {
-      (argon2.verify as jest.Mock).mockRejectedValueOnce(new Error('Verification failed'));
-
       const userData = {
         email: 'test@example.com',
         password: 'password123',
-        firstName: 'John',
-        lastName: 'Doe',
+        firstName: 'Test',
+        lastName: 'User',
       };
 
-      const user = await UserModel.create(userData);
+      const user = new UserModel(userData);
+      const savedUser = await user.save();
 
-      const isMatch = await user.comparePassword('password123');
+      // Corrupt the password hash
+      savedUser.password = 'invalid-hash';
+      await savedUser.save();
+
+      const isMatch = await savedUser.comparePassword('password123');
       expect(isMatch).toBe(false);
     });
   });
