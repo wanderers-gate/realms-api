@@ -5,6 +5,7 @@ import { UserModel } from '../../models/user-model';
 import { serializeUser } from '../../serializers/user.serializer';
 import jwt from 'jsonwebtoken';
 import { jsonApiMiddleware } from '../../middleware/json-api';
+import mongoose from 'mongoose';
 
 // Mock dependencies
 jest.mock('../../models/user-model');
@@ -20,6 +21,11 @@ app.post('/logout', logout);
 
 describe('Auth Controller', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  afterAll(async () => {
+    await mongoose.connection.close();
     jest.clearAllMocks();
   });
 
