@@ -57,7 +57,7 @@ commands:
 jobs:
   install:
     docker:
-      - image: cimg/node:20.10
+      - image: cimg/node:22.13.1
     steps:
       - checkout
       - node/install-packages:
@@ -69,7 +69,7 @@ jobs:
 
   lint:
     docker:
-      - image: cimg/node:20.10
+      - image: cimg/node:22.13.1
     steps:
       - checkout
       - attach_workspace:
@@ -80,18 +80,20 @@ jobs:
 
   test:
     docker:
-      - image: cimg/node:20.10
+      - image: cimg/node:22.13.1
+    environment:
+      JWT_SECRET: "test-secret-key-for-circleci"
     steps:
       - checkout
       - attach_workspace:
           at: .
       - run:
           name: Run tests
-          command: npm run pipeline:test
+          command: npm run pipeline:test -- --detectOpenHandles
 
   build:
     docker:
-      - image: cimg/node:20.10
+      - image: cimg/node:22.13.1
     steps:
       - checkout
       - attach_workspace:
@@ -106,7 +108,7 @@ jobs:
 
   deploy-qa:
     docker:
-      - image: cimg/node:20.10
+      - image: cimg/node:22.13.1
     environment:
       AWS_REGION: us-west-2
     steps:
@@ -116,7 +118,7 @@ jobs:
 
   deploy-staging:
     docker:
-      - image: cimg/node:20.10
+      - image: cimg/node:22.13.1
     environment:
       AWS_REGION: us-west-2
     steps:
@@ -126,7 +128,7 @@ jobs:
 
   deploy-prod:
     docker:
-      - image: cimg/node:20.10
+      - image: cimg/node:22.13.1
     environment:
       AWS_REGION: us-west-2
     steps:

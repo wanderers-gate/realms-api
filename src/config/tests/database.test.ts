@@ -23,6 +23,12 @@ describe('Database Connection', () => {
     console.error = originalConsole.error;
   });
 
+  afterAll(async () => {
+    if (mongoose.connection?.close) {
+      await mongoose.connection.close();
+    }
+  });
+
   it('should connect to MongoDB successfully', async () => {
     const mockConnect = jest.spyOn(mongoose, 'connect').mockResolvedValue(mongoose);
 
@@ -48,7 +54,7 @@ describe('Database Connection', () => {
     (mongoose.connect as jest.Mock).mockResolvedValueOnce(undefined);
 
     await connectDB();
-    
+
     // Verify the correct URI was used
     expect(mongoose.connect).toHaveBeenCalledWith(
       expect.stringContaining('mongodb://'),
@@ -61,13 +67,13 @@ describe('Database Connection', () => {
     (mongoose.connect as jest.Mock).mockResolvedValueOnce(undefined);
 
     await connectDB();
-    
+
     // Verify the correct options were used
     expect(mongoose.connect).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({
-        autoIndex: true
+        autoIndex: true,
       })
     );
   });
-}); 
+});
