@@ -2,6 +2,7 @@ import type { Request, Response } from 'express';
 import { UserModel } from '../models/user-model';
 import { serializeUser } from '../serializers/user.serializer';
 import { generateToken } from '../utils/jwt';
+import logger from '../utils/logger';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -34,7 +35,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     // Log tokenVersion after registration
     // eslint-disable-next-line no-console
-    console.log('[REGISTER] user.tokenVersion:', user.tokenVersion);
+    logger.info('[REGISTER] user.tokenVersion:', user.tokenVersion);
 
     // Generate token with initial tokenVersion
     const token = generateToken(user._id.toString(), user.tokenVersion);
@@ -68,6 +69,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     // Find user
     const user = await UserModel.findOne({ email });
     if (!user) {
+      logger.error('[LOGIN] Failed - user not found', { email });
       res.status(401).json({
         errors: [
           {
@@ -83,6 +85,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     // Verify password
     const isValid = await user.comparePassword(password);
     if (!isValid) {
+      logger.error('[LOGIN] Failed - invalid password', { email });
       res.status(401).json({
         errors: [
           {
@@ -96,16 +99,14 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Log tokenVersion before increment
-    // eslint-disable-next-line no-console
-    console.log('[LOGIN] user.tokenVersion before:', user.tokenVersion);
+    logger.info('[LOGIN] user.tokenVersion before:', user.tokenVersion);
 
     // Increment tokenVersion and save
     user.tokenVersion += 1;
     await user.save();
 
     // Log tokenVersion after increment
-    // eslint-disable-next-line no-console
-    console.log('[LOGIN] user.tokenVersion after:', user.tokenVersion);
+    logger.info('[LOGIN] user.tokenVersion after:', user.tokenVersion);
 
     // Generate new token with updated tokenVersion
     const token = generateToken(user._id.toString(), user.tokenVersion);
@@ -118,8 +119,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       maxAge: 3600000, // 1 hour
     });
 
-    res.json(serializeUser(user));
-  } catch (_error) {
+    logger.info('[LOGIN] Success', { email });
+    res.status(200).json(serializeUser(user));
+  } catch (error) {
+    logger.error('[LOGIN] Error:', error);
     res.status(500).json({
       errors: [
         {

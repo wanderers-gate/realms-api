@@ -1,9 +1,8 @@
 import mongoose from 'mongoose';
 import config from './config/config';
 import connectDB from './config/database';
-import logger from './utils/logger';
-
 import app from './index';
+import logger from './utils/logger';
 
 let server: ReturnType<typeof app.listen>;
 
