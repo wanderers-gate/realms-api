@@ -24,7 +24,7 @@ describe('Database Connection', () => {
   });
 
   afterAll(async () => {
-    if (mongoose.connection && mongoose.connection.close) {
+    if (mongoose.connection?.close) {
       await mongoose.connection.close();
     }
   });
