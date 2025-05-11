@@ -39,35 +39,37 @@ describe('Auth Controller', () => {
   });
 
   describe('register', () => {
-    it('should register a new user', async () => {
+    it('should register a new user', (done) => {
       (UserModel.findOne as jest.Mock).mockResolvedValue(null);
       (UserModel.create as jest.Mock).mockResolvedValue({ _id: '1', email: 'test@example.com' });
       (serializeUser as jest.Mock).mockReturnValue({
         data: { _id: '1', email: 'test@example.com' },
       });
 
-      const res = await request(app)
+      request(app)
         .post('/register')
         .send({ email: 'test@example.com', password: 'password' })
-        .expect(201);
-
-      expect(res.body).toEqual({ data: { _id: '1', email: 'test@example.com' } });
+        .expect(201)
+        .expect({ data: { _id: '1', email: 'test@example.com' } })
+        .end(done);
     });
 
-    it('should not register if user exists', async () => {
+    it('should not register if user exists', (done) => {
       (UserModel.findOne as jest.Mock).mockResolvedValue({ _id: '1', email: 'test@example.com' });
 
-      const res = await request(app)
+      request(app)
         .post('/register')
         .send({ email: 'test@example.com', password: 'password' })
-        .expect(400);
-
-      expect(res.body.errors[0].detail).toBe('User already exists');
+        .expect(400)
+        .expect((res) => {
+          expect(res.body.errors[0].detail).toBe('User already exists');
+        })
+        .end(done);
     });
   });
 
   describe('login', () => {
-    it('should login a user and return a token', async () => {
+    it('should login a user and return a token', (done) => {
       const mockUser = {
         _id: '1',
         email: 'test@example.com',
@@ -79,34 +81,38 @@ describe('Auth Controller', () => {
       });
       (jwt.sign as jest.Mock).mockReturnValue('mocktoken');
 
-      const res = await request(app)
+      request(app)
         .post('/login')
         .send({ email: 'test@example.com', password: 'password' })
-        .expect(200);
-
-      expect(res.body.token).toBe('mocktoken');
-      expect(res.body.user).toBeDefined();
+        .expect(200)
+        .expect((res) => {
+          expect(res.body.token).toBe('mocktoken');
+          expect(res.body.user).toBeDefined();
+        })
+        .end(done);
     });
 
-    it('should not login with invalid credentials', async () => {
+    it('should not login with invalid credentials', (done) => {
       (UserModel.findOne as jest.Mock).mockResolvedValue(null);
 
-      const res = await request(app)
+      request(app)
         .post('/login')
         .send({ email: 'test@example.com', password: 'wrong' })
-        .expect(401);
-
-      expect(res.body.errors[0].detail).toBe('Invalid credentials');
+        .expect(401)
+        .expect((res) => {
+          expect(res.body.errors[0].detail).toBe('Invalid credentials');
+        })
+        .end(done);
     });
   });
 
   describe('logout', () => {
-    it('should clear the token cookie', async () => {
-      const res = await request(app)
+    it('should clear the token cookie', (done) => {
+      request(app)
         .post('/logout')
-        .expect(200);
-
-      expect(res.body.message).toBe('Logged out successfully');
+        .expect(200)
+        .expect({ message: 'Logged out successfully' })
+        .end(done);
     });
   });
 });
