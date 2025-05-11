@@ -7,6 +7,7 @@ export interface User {
   password: string;
   firstName: string;
   lastName: string;
+  tokenVersion: number;
   createdAt: Date;
   updatedAt: Date;
   comparePassword: (candidatePassword: string) => Promise<boolean>;
@@ -41,6 +42,11 @@ const userSchema = new mongoose.Schema<User>(
       type: String,
       required: true,
       trim: true,
+    },
+    tokenVersion: {
+      type: Number,
+      required: true,
+      default: 0,
     },
   },
   {
