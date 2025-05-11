@@ -81,6 +81,8 @@ jobs:
   test:
     docker:
       - image: cimg/node:22.13.1
+    environment:
+      JWT_SECRET: "test-secret-key-for-circleci"
     steps:
       - checkout
       - attach_workspace:
