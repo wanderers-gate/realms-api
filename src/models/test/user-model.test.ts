@@ -3,12 +3,25 @@ import { UserModel } from '../user-model';
 
 describe('User Model', () => {
   beforeAll(async () => {
-    await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/test');
+    try {
+      await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/test', {
+        serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+        socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+      });
+    } catch (error) {
+      console.error('MongoDB connection error:', error);
+      throw error;
+    }
   });
 
   afterAll(async () => {
-    await mongoose.connection.dropDatabase();
-    await mongoose.connection.close();
+    try {
+      await mongoose.connection.dropDatabase();
+      await mongoose.connection.close();
+    } catch (error) {
+      console.error('Error during cleanup:', error);
+      throw error;
+    }
   });
 
   beforeEach(async () => {
