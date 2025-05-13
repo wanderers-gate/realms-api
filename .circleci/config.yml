@@ -5,28 +5,71 @@ orbs:
   aws-cli: circleci/aws-cli@5.3.2
 
 commands:
-  store-version:
-    description: "Extract version number from release tag and feature branch name"
+  setup-versioning:
+    description: "Set up versioning information for builds"
     steps:
       - run:
-          name: Store version
+          name: Setup versioning
           command: |
-            # Extract version from tag
+            # Set a timestamp for all builds for unique snapshots
+            TIMESTAMP=$(date +%Y%m%d%H%M%S)
+            echo "export BUILD_TIMESTAMP=$TIMESTAMP" >> $BASH_ENV
+            
+            # Tag-based release
             if [[ $CIRCLE_TAG =~ ^release/([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-              echo "export VERSION=${BASH_REMATCH[1]}-SNAPSHOT" >> $BASH_ENV
-              source $BASH_ENV
-              echo "Version set to: $VERSION"
+              VERSION=${BASH_REMATCH[1]}
+              echo "export VERSION=$VERSION" >> $BASH_ENV
+              echo "export BUILD_TYPE=release" >> $BASH_ENV
+              echo "export S3_PREFIX=releases/$VERSION" >> $BASH_ENV
+              echo "export S3_LATEST_PREFIX=releases/latest" >> $BASH_ENV
+            # Feature branch
             elif [[ $CIRCLE_BRANCH =~ ^feature/(.+)$ ]]; then
-              echo "export BRANCH_NAME=${BASH_REMATCH[1]}-SNAPSHOT" >> $BASH_ENV
-              source $BASH_ENV
-              echo "Branch name set to: $BRANCH_NAME"
+              BRANCH_NAME=${BASH_REMATCH[1]}
+              echo "export VERSION=$BRANCH_NAME-SNAPSHOT-$TIMESTAMP" >> $BASH_ENV
+              echo "export BUILD_TYPE=snapshot" >> $BASH_ENV
+              echo "export S3_PREFIX=snapshots/$BRANCH_NAME/$TIMESTAMP" >> $BASH_ENV
+              echo "export S3_LATEST_PREFIX=snapshots/$BRANCH_NAME/latest" >> $BASH_ENV
+            # master branch
+            elif [[ $CIRCLE_BRANCH == "master" ]]; then
+              echo "export VERSION=master-SNAPSHOT-$TIMESTAMP" >> $BASH_ENV
+              echo "export BUILD_TYPE=snapshot" >> $BASH_ENV
+              echo "export S3_PREFIX=snapshots/master/$TIMESTAMP" >> $BASH_ENV
+              echo "export S3_LATEST_PREFIX=snapshots/master/latest" >> $BASH_ENV
             else
-              echo "Invalid tag or branch name format. Expected release/x.x.x or feature/x.x.x"
-              exit 1
+              echo "Build from branch $CIRCLE_BRANCH"
+              echo "export VERSION=${CIRCLE_BRANCH/\//-}-SNAPSHOT-$TIMESTAMP" >> $BASH_ENV
+              echo "export BUILD_TYPE=snapshot" >> $BASH_ENV
+              echo "export S3_PREFIX=snapshots/branch/${CIRCLE_BRANCH/\//-}/$TIMESTAMP" >> $BASH_ENV
+              echo "export S3_LATEST_PREFIX=snapshots/branch/${CIRCLE_BRANCH/\//-}/latest" >> $BASH_ENV
             fi
+            
+            source $BASH_ENV
+            echo "Version set to: $VERSION"
+            echo "Build type: $BUILD_TYPE"
+            echo "S3 prefix: $S3_PREFIX"
+            echo "S3 latest prefix: $S3_LATEST_PREFIX"
+            
+            # Create a version.json file for the build
+            echo "{\"version\": \"$VERSION\", \"buildType\": \"$BUILD_TYPE\", \"timestamp\": \"$TIMESTAMP\", \"commit\": \"$CIRCLE_SHA1\", \"branch\": \"$CIRCLE_BRANCH\", \"tag\": \"$CIRCLE_TAG\"}" > version.json
 
-  deploy-to-env:
-    description: "Deploy to specified environment"
+  create-snapshot:
+    description: "Create a snapshot archive of the build"
+    steps:
+      - run:
+          name: Create snapshot archive
+          command: |
+            # Copy the version.json file to the dist directory
+            cp version.json dist/
+            
+            # Create a snapshot archive
+            cd dist
+            zip -r ../realms-api-${VERSION}.zip .
+            cd ..
+            
+            echo "Created snapshot archive: realms-api-${VERSION}.zip"
+
+  deploy-to-s3:
+    description: "Deploy to S3 bucket"
     parameters:
       environment:
         type: string
@@ -34,7 +77,8 @@ commands:
     steps:
       - attach_workspace:
           at: .
-      - store-version
+      - setup-versioning
+      - create-snapshot
       - aws-cli/setup:
           profile_name: realms
       - run:
@@ -44,15 +88,43 @@ commands:
             aws configure set aws_secret_access_key "${AWS_SECRET_ACCESS_KEY}" --profile realms
             aws configure set region "${AWS_REGION}" --profile realms
       - run:
-          name: Sync to S3
+          name: Upload snapshot to S3
           command: |
-            aws s3 sync dist/ s3://realms-libs-<< parameters.environment >>/realms-api/${CIRCLE_TAG:+${VERSION}}${CIRCLE_BRANCH:+${BRANCH_NAME}}/ \
+            # Upload the zip file to the versioned location
+            aws s3 cp realms-api-${VERSION}.zip s3://realms-libs-<< parameters.environment >>/$S3_PREFIX/ \
+              --profile realms \
+              --acl public-read
+            
+            # Upload to the "latest" location
+            aws s3 cp realms-api-${VERSION}.zip s3://realms-libs-<< parameters.environment >>/$S3_LATEST_PREFIX/realms-api-latest.zip \
+              --profile realms \
+              --acl public-read
+            
+            # Upload version.json to both locations
+            aws s3 cp version.json s3://realms-libs-<< parameters.environment >>/$S3_PREFIX/ \
+              --profile realms \
+              --acl public-read
+              
+            aws s3 cp version.json s3://realms-libs-<< parameters.environment >>/$S3_LATEST_PREFIX/ \
+              --profile realms \
+              --acl public-read
+            
+            echo "Uploaded to S3:"
+            echo "- s3://realms-libs-<< parameters.environment >>/$S3_PREFIX/realms-api-${VERSION}.zip"
+            echo "- s3://realms-libs-<< parameters.environment >>/$S3_LATEST_PREFIX/realms-api-latest.zip"
+
+      - run:
+          name: Upload individual files to S3 (for backwards compatibility)
+          command: |
+            # For backwards compatibility, also upload the individual files
+            aws s3 sync dist/ s3://realms-libs-<< parameters.environment >>/$S3_PREFIX/files/ \
               --profile realms \
               --acl public-read \
               --exclude "server.js" \
               --exclude "server.js.map" \
               --include "server.*.js" \
-              --include "server.*.js.map"
+              --include "server.*.js.map" \
+              --include "version.json"
 
 jobs:
   install:
@@ -98,6 +170,7 @@ jobs:
       - checkout
       - attach_workspace:
           at: .
+      - setup-versioning
       - run:
           name: Build
           command: npm run build
@@ -105,6 +178,7 @@ jobs:
           root: .
           paths:
             - dist
+            - version.json
 
   deploy-qa:
     docker:
@@ -113,7 +187,7 @@ jobs:
       AWS_REGION: us-west-2
     steps:
       - checkout
-      - deploy-to-env:
+      - deploy-to-s3:
           environment: qa
 
   deploy-staging:
@@ -123,7 +197,7 @@ jobs:
       AWS_REGION: us-west-2
     steps:
       - checkout
-      - deploy-to-env:
+      - deploy-to-s3:
           environment: staging
 
   deploy-prod:
@@ -133,32 +207,47 @@ jobs:
       AWS_REGION: us-west-2
     steps:
       - checkout
-      - deploy-to-env:
+      - deploy-to-s3:
           environment: prod
 
 workflows:
   version: 2
   build-and-deploy:
     jobs:
-      - install
+      - install:
+          filters:
+            tags:
+              only: /^release\/.*/
       - lint:
           requires:
             - install
+          filters:
+            tags:
+              only: /^release\/.*/
       - test:
           requires:
             - install
+          filters:
+            tags:
+              only: /^release\/.*/
       - build:
           requires:
             - lint
             - test
+          filters:
+            tags:
+              only: /^release\/.*/
+      # QA deployments (from feature branches and master)
       - deploy-qa:
           requires:
             - build
           filters:
             branches:
               only:
+                - master
                 - /^feature\/.*/
           context: Realms
+      # Staging deployments (from release tags)
       - deploy-staging:
           requires:
             - build
@@ -168,6 +257,7 @@ workflows:
             branches:
               ignore: /.*/
           context: Realms
+      # Production deployments (from release tags)
       - deploy-prod:
           requires:
             - build
