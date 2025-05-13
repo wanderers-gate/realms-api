@@ -135,11 +135,10 @@ describe('Auth Controller', () => {
       expect(mockResponse.cookie).toHaveBeenCalledWith('token', 'mock-token', {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
         maxAge: 3600000,
       });
-      expect(serializeUser).toHaveBeenCalledWith(mockUser);
-      expect(mockResponse.json).toHaveBeenCalledWith({ data: { id: mockUser._id.toString() } });
+      expect(mockResponse.send).toHaveBeenCalled();
     });
 
     it('should not login with invalid credentials', async () => {

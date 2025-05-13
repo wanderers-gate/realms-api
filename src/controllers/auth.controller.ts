@@ -115,12 +115,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
       maxAge: 3600000, // 1 hour
     });
 
     logger.info('[LOGIN] Success', { email });
-    res.status(200).json(serializeUser(user));
+    res.status(200).send();
   } catch (error) {
     logger.error('[LOGIN] Error:', error);
     res.status(500).json({
@@ -142,4 +142,24 @@ export const logout = (_req: Request, res: Response): void => {
     sameSite: 'strict',
   });
   res.status(204).send();
+};
+
+export const authCheck = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const token = req.cookies.token;
+    if (!token) {
+      res.status(401).send();
+      return;
+    }
+    res.status(200).send();
+  } catch (error) {
+    logger.error('[AUTH CHECK] Error:', error);
+    res.jsonApiError(500, [
+      {
+        status: '500',
+        title: 'Internal Server Error',
+        detail: 'An error occurred while checking auth',
+      },
+    ]);
+  }
 };

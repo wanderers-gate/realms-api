@@ -5,6 +5,7 @@ import { authenticate } from './middleware/auth.middleware';
 import { jsonApiMiddleware } from './middleware/json-api';
 import authRouter from './routes/authRouter';
 import userRouter from './routes/userRouter';
+import { authCheck } from './controllers/auth.controller';
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.use(jsonApiMiddleware);
 app.use('/api/auth', authRouter);
 app.use(authenticate);
 
+app.use('/api/auth', authRouter);
 app.use('/api/users', userRouter);
 
 // Error handling middleware
