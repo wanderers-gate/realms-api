@@ -91,33 +91,33 @@ commands:
           name: Upload snapshot to S3
           command: |
             # Upload the zip file to the versioned location
-            aws s3 cp realms-api-${VERSION}.zip s3://realms-libs-<< parameters.environment >>/$S3_PREFIX/ \
+            aws s3 cp realms-api-${VERSION}.zip s3://realms-libs-<< parameters.environment >>/realms-api/$S3_PREFIX/ \
               --profile realms \
               --acl public-read
             
             # Upload to the "latest" location
-            aws s3 cp realms-api-${VERSION}.zip s3://realms-libs-<< parameters.environment >>/$S3_LATEST_PREFIX/realms-api-latest.zip \
+            aws s3 cp realms-api-${VERSION}.zip s3://realms-libs-<< parameters.environment >>/realms-api/$S3_LATEST_PREFIX/realms-api-latest.zip \
               --profile realms \
               --acl public-read
             
             # Upload version.json to both locations
-            aws s3 cp version.json s3://realms-libs-<< parameters.environment >>/$S3_PREFIX/ \
+            aws s3 cp version.json s3://realms-libs-<< parameters.environment >>/realms-api/$S3_PREFIX/ \
               --profile realms \
               --acl public-read
               
-            aws s3 cp version.json s3://realms-libs-<< parameters.environment >>/$S3_LATEST_PREFIX/ \
+            aws s3 cp version.json s3://realms-libs-<< parameters.environment >>/realms-api/$S3_LATEST_PREFIX/ \
               --profile realms \
               --acl public-read
             
             echo "Uploaded to S3:"
-            echo "- s3://realms-libs-<< parameters.environment >>/$S3_PREFIX/realms-api-${VERSION}.zip"
-            echo "- s3://realms-libs-<< parameters.environment >>/$S3_LATEST_PREFIX/realms-api-latest.zip"
+            echo "- s3://realms-libs-<< parameters.environment >>/realms-api/$S3_PREFIX/realms-api-${VERSION}.zip"
+            echo "- s3://realms-libs-<< parameters.environment >>/realms-api/$S3_LATEST_PREFIX/realms-api-latest.zip"
 
       - run:
           name: Upload individual files to S3 (for backwards compatibility)
           command: |
             # For backwards compatibility, also upload the individual files
-            aws s3 sync dist/ s3://realms-libs-<< parameters.environment >>/$S3_PREFIX/files/ \
+            aws s3 sync dist/ s3://realms-libs-<< parameters.environment >>/realms-api/$S3_PREFIX/files/ \
               --profile realms \
               --acl public-read \
               --exclude "server.js" \
