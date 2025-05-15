@@ -144,7 +144,7 @@ export const logout = (_req: Request, res: Response): void => {
   res.status(204).send();
 };
 
-export const authCheck = async (req: Request, res: Response): Promise<void> => {
+export const authCheck = async (_req: Request, res: Response): Promise<void> => {
   try {
     // Since this route is now behind the authentication middleware,
     // if the request made it here, the user is already authenticated

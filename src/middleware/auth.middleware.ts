@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { UserModel } from '../models/user-model';
+import { UserModel, type UserDocument } from '../models/user-model';
 import { verifyJwt } from '../utils/jwt';
 
 // Add custom type for request with user
@@ -7,7 +7,7 @@ declare global {
   namespace Express {
     interface Request {
       userId?: string;
-      user?: any;
+      user?: UserDocument;
     }
   }
 }
