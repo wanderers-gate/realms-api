@@ -4,8 +4,8 @@ import express from 'express';
 import { authenticate } from './middleware/auth.middleware';
 import { jsonApiMiddleware } from './middleware/json-api';
 import authRouter from './routes/authRouter';
+import authProtectedRouter from './routes/authProtectedRouter';
 import userRouter from './routes/userRouter';
-import { authCheck } from './controllers/auth.controller';
 
 const app = express();
 
@@ -54,11 +54,12 @@ app.use(cookieParser());
 // Then process JSON:API format
 app.use(jsonApiMiddleware);
 
-// Routes
+// Routes that don't need authentication
 app.use('/api/auth', authRouter);
-app.use(authenticate);
 
-app.use('/api/auth', authRouter);
+// Routes that require authentication
+app.use(authenticate);
+app.use('/api/auth', authProtectedRouter);
 app.use('/api/users', userRouter);
 
 // Error handling middleware

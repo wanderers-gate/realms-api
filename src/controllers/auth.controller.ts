@@ -146,20 +146,21 @@ export const logout = (_req: Request, res: Response): void => {
 
 export const authCheck = async (req: Request, res: Response): Promise<void> => {
   try {
-    const token = req.cookies.token;
-    if (!token) {
-      res.status(401).send();
-      return;
-    }
+    // Since this route is now behind the authentication middleware,
+    // if the request made it here, the user is already authenticated
+    
+    // Simply return success status
     res.status(200).send();
   } catch (error) {
     logger.error('[AUTH CHECK] Error:', error);
-    res.jsonApiError(500, [
-      {
-        status: '500',
-        title: 'Internal Server Error',
-        detail: 'An error occurred while checking auth',
-      },
-    ]);
+    res.status(500).json({
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'An error occurred while checking auth',
+        },
+      ],
+    });
   }
 };

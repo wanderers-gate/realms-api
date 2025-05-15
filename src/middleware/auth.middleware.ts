@@ -2,6 +2,16 @@ import type { NextFunction, Request, Response } from 'express';
 import { UserModel } from '../models/user-model';
 import { verifyJwt } from '../utils/jwt';
 
+// Add custom type for request with user
+declare global {
+  namespace Express {
+    interface Request {
+      userId?: string;
+      user?: any;
+    }
+  }
+}
+
 export const authenticate = async (
   req: Request,
   res: Response,
@@ -83,7 +93,8 @@ export const authenticate = async (
       return;
     }
 
-    // Add user to request object
+    // Add userId to request object
+    req.userId = decoded.userId;
     req.user = user;
     next();
   } catch (error) {
