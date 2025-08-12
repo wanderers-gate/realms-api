@@ -91,16 +91,23 @@ io.on('connection', (socket: AuthenticatedSocket) => {
 
   // Handle chat messages
   socket.on('send-message', (message: string) => {
+    logger.info(`[CHAT] Received message from ${socket.id}: "${message}"`);
+    
     const roomId = userRooms.get(socket.id);
-    if (!roomId) return;
+    if (!roomId) {
+      logger.warn(`[CHAT] No room found for socket ${socket.id}`);
+      return;
+    }
 
     const chatMessage = {
       id: Date.now(),
       userId: socket.id,
-      username: socket.username,
+      username: socket.username || 'Unknown User',
       message: message,
       timestamp: new Date()
     };
+
+    logger.info(`[CHAT] Created message object:`, chatMessage);
 
     // Store message in room
     const room = rooms.get(roomId);
@@ -110,11 +117,15 @@ io.on('connection', (socket: AuthenticatedSocket) => {
       if (room.messages.length > 100) {
         room.messages = room.messages.slice(-100);
       }
+      logger.info(`[CHAT] Stored message in room ${roomId}, total messages: ${room.messages.length}`);
+    } else {
+      logger.warn(`[CHAT] Room ${roomId} not found when storing message`);
     }
 
     // Broadcast to all users in room
+    logger.info(`[CHAT] Broadcasting message to room ${roomId}:`, chatMessage);
     io.to(roomId).emit('new-message', chatMessage);
-    logger.info(`Message from ${socket.username} in room ${roomId}: ${message}`);
+    logger.info(`[CHAT] Message broadcast complete`);
   });
 
   // Handle disconnect

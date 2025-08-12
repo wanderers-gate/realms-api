@@ -144,6 +144,46 @@ export const logout = (_req: Request, res: Response): void => {
   res.status(204).send();
 };
 
+export const getCurrentUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // The user should be available from the authentication middleware
+    const user = req.user;
+    
+    if (!user) {
+      res.status(401).json({
+        errors: [
+          {
+            status: '401',
+            title: 'Unauthorized',
+            detail: 'User not found in request',
+          },
+        ],
+      });
+      return;
+    }
+
+    // Return user information with displayName fallback
+    res.status(200).json({
+      id: user._id.toString(),
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      displayName: user.displayName || `${user.firstName} ${user.lastName}`,
+    });
+  } catch (error) {
+    logger.error('[GET CURRENT USER] Error:', error);
+    res.status(500).json({
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'An error occurred while fetching user data',
+        },
+      ],
+    });
+  }
+};
+
 export const authCheck = async (_req: Request, res: Response): Promise<void> => {
   try {
     // Since this route is now behind the authentication middleware,
