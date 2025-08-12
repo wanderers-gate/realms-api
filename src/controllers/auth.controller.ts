@@ -6,7 +6,21 @@ import logger from '../utils/logger';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, firstName, lastName } = req.body;
+    const { email, password, firstName, lastName, displayName } = req.body;
+
+    // Validate displayName if provided
+    if (displayName && (displayName.trim().length === 0 || displayName.trim().length > 50)) {
+      res.status(400).json({
+        errors: [
+          {
+            status: '400',
+            title: 'Bad Request',
+            detail: 'Display name must be between 1 and 50 characters',
+          },
+        ],
+      });
+      return;
+    }
 
     // Check if user already exists
     const existingUser = await UserModel.findOne({ email });
@@ -29,6 +43,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       password,
       firstName,
       lastName,
+      displayName: displayName ? displayName.trim() : undefined, // Optional field
     });
 
     await user.save();
