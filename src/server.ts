@@ -107,7 +107,7 @@ io.on('connection', (socket: AuthenticatedSocket) => {
       timestamp: new Date()
     };
 
-    logger.info(`[CHAT] Created message object:`, chatMessage);
+    logger.info('[CHAT] Created message object:', chatMessage);
 
     // Store message in room
     const room = rooms.get(roomId);
@@ -125,7 +125,7 @@ io.on('connection', (socket: AuthenticatedSocket) => {
     // Broadcast to all users in room
     logger.info(`[CHAT] Broadcasting message to room ${roomId}:`, chatMessage);
     io.to(roomId).emit('new-message', chatMessage);
-    logger.info(`[CHAT] Message broadcast complete`);
+    logger.info('[CHAT] Message broadcast complete');
   });
 
   // Handle disconnect
