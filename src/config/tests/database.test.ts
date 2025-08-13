@@ -35,7 +35,7 @@ describe('Database Connection', () => {
     await connectDB();
 
     expect(mockConnect).toHaveBeenCalledWith(config.mongodb.uri, config.mongodb.options);
-    expect(logger.info).toHaveBeenCalledWith('Connected to MongoDB');
+    expect(logger.info).toHaveBeenCalledWith('Successfully connected to local MongoDB');
   });
 
   it('should exit process on connection error', async () => {

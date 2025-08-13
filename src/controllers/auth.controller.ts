@@ -6,7 +6,21 @@ import logger from '../utils/logger';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, firstName, lastName } = req.body;
+    const { email, password, firstName, lastName, displayName } = req.body;
+
+    // Validate displayName if provided
+    if (displayName && (displayName.trim().length === 0 || displayName.trim().length > 50)) {
+      res.status(400).json({
+        errors: [
+          {
+            status: '400',
+            title: 'Bad Request',
+            detail: 'Display name must be between 1 and 50 characters',
+          },
+        ],
+      });
+      return;
+    }
 
     // Check if user already exists
     const existingUser = await UserModel.findOne({ email });
@@ -29,6 +43,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       password,
       firstName,
       lastName,
+      displayName: displayName ? displayName.trim() : undefined, // Optional field
     });
 
     await user.save();
@@ -142,6 +157,46 @@ export const logout = (_req: Request, res: Response): void => {
     sameSite: 'strict',
   });
   res.status(204).send();
+};
+
+export const getCurrentUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // The user should be available from the authentication middleware
+    const user = req.user;
+    
+    if (!user) {
+      res.status(401).json({
+        errors: [
+          {
+            status: '401',
+            title: 'Unauthorized',
+            detail: 'User not found in request',
+          },
+        ],
+      });
+      return;
+    }
+
+    // Return user information with displayName fallback
+    res.status(200).json({
+      id: user._id.toString(),
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      displayName: user.displayName || `${user.firstName} ${user.lastName}`,
+    });
+  } catch (error) {
+    logger.error('[GET CURRENT USER] Error:', error);
+    res.status(500).json({
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'An error occurred while fetching user data',
+        },
+      ],
+    });
+  }
 };
 
 export const authCheck = async (_req: Request, res: Response): Promise<void> => {

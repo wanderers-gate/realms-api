@@ -7,6 +7,7 @@ export interface User {
   password: string;
   firstName: string;
   lastName: string;
+  displayName?: string; // Optional field for backward compatibility
   tokenVersion: number;
   createdAt: Date;
   updatedAt: Date;
@@ -42,6 +43,12 @@ const userSchema = new mongoose.Schema<User>(
       type: String,
       required: true,
       trim: true,
+    },
+    displayName: {
+      type: String,
+      required: false,
+      trim: true,
+      maxlength: 50,
     },
     tokenVersion: {
       type: Number,
