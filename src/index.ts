@@ -5,6 +5,7 @@ import { authenticate } from './middleware/auth.middleware';
 import { jsonApiMiddleware } from './middleware/json-api';
 import authRouter from './routes/authRouter';
 import authProtectedRouter from './routes/authProtectedRouter';
+import roomRouter from './routes/roomRouter';
 import userRouter from './routes/userRouter';
 
 const app = express();
@@ -56,6 +57,7 @@ app.use(jsonApiMiddleware);
 
 // Routes that don't need authentication
 app.use('/api/auth', authRouter);
+app.use('/api/rooms', roomRouter); // Room listing and viewing are public
 
 // Routes that require authentication
 app.use(authenticate);
