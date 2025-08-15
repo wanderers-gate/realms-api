@@ -48,10 +48,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     await user.save();
 
-    // Log tokenVersion after registration
-    // eslint-disable-next-line no-console
-    logger.info('[REGISTER] user.tokenVersion:', user.tokenVersion);
-
     // Generate token with initial tokenVersion
     const token = generateToken(user._id.toString(), user.tokenVersion);
 
@@ -113,15 +109,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Log tokenVersion before increment
-    logger.info('[LOGIN] user.tokenVersion before:', user.tokenVersion);
-
     // Increment tokenVersion and save
     user.tokenVersion += 1;
     await user.save();
-
-    // Log tokenVersion after increment
-    logger.info('[LOGIN] user.tokenVersion after:', user.tokenVersion);
 
     // Generate new token with updated tokenVersion
     const token = generateToken(user._id.toString(), user.tokenVersion);

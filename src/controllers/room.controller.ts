@@ -2,6 +2,16 @@ import type { Request, Response } from 'express';
 import { type Room, RoomModel } from '../models/room-model';
 import { UserModel } from '../models/user-model';
 import { serializeRoom, serializeRoomWithIncludes } from '../serializers/room.serializer';
+import type { JsonApiResourceObject } from '../types/json-api';
+import type { Types } from 'mongoose';
+
+// Type for populated user data
+interface PopulatedUser {
+  _id: Types.ObjectId;
+  firstName: string;
+  lastName: string;
+  displayName: string;
+}
 
 // Type for MongoDB query
 interface RoomQuery {
@@ -119,7 +129,24 @@ export const getRooms = async (req: Request, res: Response) => {
 
     const total = await RoomModel.countDocuments(query);
 
-    const response = serializeRoom(rooms);
+    // Include the populated createdBy user data for each room
+    const includes: Record<string, JsonApiResourceObject> = {};
+    rooms.forEach((room) => {
+      if (room.createdBy && typeof room.createdBy === 'object' && 'firstName' in room.createdBy) {
+        const createdByUser = room.createdBy as unknown as PopulatedUser;
+        includes[`user-${createdByUser._id}`] = {
+          id: String(createdByUser._id),
+          type: 'user',
+          attributes: {
+            firstName: createdByUser.firstName,
+            lastName: createdByUser.lastName,
+            displayName: createdByUser.displayName,
+          },
+        };
+      }
+    });
+
+    const response = serializeRoomWithIncludes(rooms, includes);
 
     // Add pagination metadata
     response.meta = {
@@ -181,7 +208,19 @@ export const getRoom = async (req: Request, res: Response) => {
       });
     }
 
-    const response = serializeRoom(room);
+    // Include the populated createdBy user data
+    const createdByUser = room.createdBy as unknown as PopulatedUser;
+    const response = serializeRoomWithIncludes(room, {
+      createdBy: {
+        id: String(createdByUser._id),
+        type: 'user',
+        attributes: {
+          firstName: createdByUser.firstName,
+          lastName: createdByUser.lastName,
+          displayName: createdByUser.displayName,
+        },
+      },
+    });
 
     res.json(response);
   } catch (error) {
@@ -255,7 +294,19 @@ export const updateRoom = async (req: Request, res: Response) => {
     await room.save();
     await room.populate('createdBy', 'firstName lastName displayName');
 
-    const response = serializeRoom(room);
+    // Include the populated createdBy user data
+    const createdByUser = room.createdBy as unknown as PopulatedUser;
+    const response = serializeRoomWithIncludes(room, {
+      createdBy: {
+        id: String(createdByUser._id),
+        type: 'user',
+        attributes: {
+          firstName: createdByUser.firstName,
+          lastName: createdByUser.lastName,
+          displayName: createdByUser.displayName,
+        },
+      },
+    });
 
     res.json(response);
   } catch (error) {

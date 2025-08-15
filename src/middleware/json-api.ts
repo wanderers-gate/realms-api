@@ -20,7 +20,6 @@ export const jsonApiMiddleware = (req: Request, res: Response, next: NextFunctio
   }
 
   // Parse JSON:API request body
-  console.log('BODY: ', req.body);
   if (req.body?.data) {
     req.body = req.body as JsonApiRequest;
   }

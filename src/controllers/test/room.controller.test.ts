@@ -326,6 +326,53 @@ describe('Room Controller', () => {
         ],
       });
     });
+
+    it('should include createdBy user data in the response', async () => {
+      const room = new RoomModel({
+        name: 'Test Room',
+        description: 'A test room',
+        createdBy: testUser._id,
+        isActive: true,
+        settings: { isPrivate: false, allowGuests: true },
+      });
+      await room.save();
+
+      const req = mockRequest({}, { roomId: room.roomId }, {});
+      const res = mockResponse();
+
+      await getRoom(req, res);
+
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: 'room',
+            attributes: expect.objectContaining({
+              name: 'Test Room',
+              roomId: room.roomId,
+            }),
+            relationships: expect.objectContaining({
+              createdBy: expect.objectContaining({
+                data: expect.objectContaining({
+                  type: 'user',
+                  id: testUser._id.toString(),
+                }),
+              }),
+            }),
+          }),
+          included: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'user',
+              id: testUser._id.toString(),
+              attributes: expect.objectContaining({
+                firstName: 'Test',
+                lastName: 'User',
+                displayName: 'Test User',
+              }),
+            }),
+          ]),
+        })
+      );
+    });
   });
 
   describe('updateRoom', () => {

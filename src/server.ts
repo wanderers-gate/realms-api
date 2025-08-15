@@ -17,19 +17,36 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
     origin: [
-      "http://localhost:5173", 
-      "http://localhost:3000",
-      "http://localhost:8080",
-      "http://realmsapp.io",
-      "https://realmsapp.io"
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:8080',
+      'http://realmsapp.io',
+      'https://realmsapp.io',
     ],
-    methods: ["GET", "POST"]
+    methods: ['GET', 'POST'],
   }
 });
 
 // Room management
-const rooms = new Map();
-const userRooms = new Map(); // Track which room each user is in
+interface RoomUser {
+  id: string;
+  username: string;
+  joinedAt: Date;
+}
+
+interface Room {
+  users: Map<string, RoomUser>;
+  messages: Array<{
+    id: string | number;
+    userId: string;
+    username: string;
+    message: string;
+    timestamp: Date;
+  }>;
+}
+
+const rooms = new Map<string, Room>();
+const userRooms = new Map<string, string>(); // Track which room each user is in
 
 let server: ReturnType<typeof httpServer.listen>;
 
@@ -65,45 +82,50 @@ io.on('connection', (socket: AuthenticatedSocket) => {
 
     // Add user to room
     const room = rooms.get(roomId);
-    room.users.set(socket.id, {
-      id: socket.id,
-      username: username,
-      joinedAt: new Date()
-    });
+    if (room) {
+      room.users.set(socket.id, {
+        id: socket.id,
+        username: username,
+        joinedAt: new Date()
+      });
+    }
 
     logger.info(`User ${username} (${socket.id}) joined room: ${roomId}`);
 
     // Load recent messages from database
-    try {
-      const recentMessages = await chatService.getRecentMessages(roomId, 50);
-      room.messages = recentMessages.map(msg => ({
-        id: msg._id.toString(),
-        userId: msg.userId,
-        username: msg.username,
-        message: msg.message,
-        timestamp: msg.timestamp
-      }));
-      logger.info(`[CHAT] Loaded ${recentMessages.length} messages for room ${roomId}`);
-    } catch (error) {
-      logger.error(`[CHAT] Error loading messages for room ${roomId}:`, error);
-      room.messages = [];
+    const currentRoom = rooms.get(roomId);
+    if (currentRoom) {
+      try {
+        const recentMessages = await chatService.getRecentMessages(roomId, 50);
+        currentRoom.messages = recentMessages.map(msg => ({
+          id: msg._id.toString(),
+          userId: msg.userId,
+          username: msg.username,
+          message: msg.message,
+          timestamp: msg.timestamp
+        }));
+        logger.info(`[CHAT] Loaded ${recentMessages.length} messages for room ${roomId}`);
+      } catch (error) {
+        logger.error(`[CHAT] Error loading messages for room ${roomId}:`, error);
+        currentRoom.messages = [];
+      }
+
+      // Send room info to joining user
+      socket.emit('room-joined', {
+        roomId: roomId,
+        users: Array.from(currentRoom.users.values()),
+        recentMessages: currentRoom.messages
+      });
+
+      // Notify other users in room
+      socket.to(roomId).emit('user-joined', {
+        userId: socket.id,
+        username: username
+      });
+
+      // Send updated user list to all in room
+      updateRoomUserList(roomId);
     }
-
-    // Send room info to joining user
-    socket.emit('room-joined', {
-      roomId: roomId,
-      users: Array.from(room.users.values()),
-      recentMessages: room.messages
-    });
-
-    // Notify other users in room
-    socket.to(roomId).emit('user-joined', {
-      userId: socket.id,
-      username: username
-    });
-
-    // Send updated user list to all in room
-    updateRoomUserList(roomId);
   });
 
   // Handle chat messages
@@ -163,11 +185,11 @@ io.on('connection', (socket: AuthenticatedSocket) => {
       logger.error('[CHAT] Error saving message to database:', error);
       // Still broadcast the message even if database save fails
       const chatMessage = {
-        id: Date.now(),
+        id: Date.now().toString(),
         userId: socket.id,
         username: socket.username || 'Unknown User',
         message: message,
-        timestamp: new Date()
+        timestamp: new Date(),
       };
       
       io.to(roomId).emit('new-message', chatMessage);
