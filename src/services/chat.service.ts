@@ -15,7 +15,7 @@ export const chatService = {
   },
 
   // Get recent messages for a room (last 50 messages)
-  async getRecentMessages(roomId: string, limit: number = 50): Promise<ChatMessageDocument[]> {
+  async getRecentMessages(roomId: string, limit = 50): Promise<ChatMessageDocument[]> {
     return await ChatMessageModel
       .find({ roomId })
       .sort({ timestamp: -1 })
@@ -24,7 +24,7 @@ export const chatService = {
   },
 
   // Clean up old messages (keep only last 1000 messages per room)
-  async cleanupOldMessages(roomId: string, keepCount: number = 1000): Promise<void> {
+  async cleanupOldMessages(roomId: string, keepCount = 1000): Promise<void> {
     const messages = await ChatMessageModel
       .find({ roomId })
       .sort({ timestamp: -1 })

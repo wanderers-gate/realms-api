@@ -160,7 +160,7 @@ io.on('connection', (socket: AuthenticatedSocket) => {
         });
       }
     } catch (error) {
-      logger.error(`[CHAT] Error saving message to database:`, error);
+      logger.error('[CHAT] Error saving message to database:', error);
       // Still broadcast the message even if database save fails
       const chatMessage = {
         id: Date.now(),
