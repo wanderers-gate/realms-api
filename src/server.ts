@@ -5,6 +5,7 @@ import app from './index';
 import logger from './utils/logger';
 import { createServer } from 'node:http';
 import { Server, type Socket } from 'socket.io';
+import { chatService } from './services/chat.service';
 
 // Extend Socket interface to include username
 interface AuthenticatedSocket extends Socket {
@@ -37,7 +38,7 @@ io.on('connection', (socket: AuthenticatedSocket) => {
   logger.info(`User connected: ${socket.id}`);
 
   // Join a room
-  socket.on('join-room', (roomId: string, username: string) => {
+  socket.on('join-room', async (roomId: string, username: string) => {
     // Leave previous room if any
     const previousRoom = userRooms.get(socket.id);
     if (previousRoom) {
@@ -72,11 +73,27 @@ io.on('connection', (socket: AuthenticatedSocket) => {
 
     logger.info(`User ${username} (${socket.id}) joined room: ${roomId}`);
 
+    // Load recent messages from database
+    try {
+      const recentMessages = await chatService.getRecentMessages(roomId, 50);
+      room.messages = recentMessages.map(msg => ({
+        id: msg._id.toString(),
+        userId: msg.userId,
+        username: msg.username,
+        message: msg.message,
+        timestamp: msg.timestamp
+      }));
+      logger.info(`[CHAT] Loaded ${recentMessages.length} messages for room ${roomId}`);
+    } catch (error) {
+      logger.error(`[CHAT] Error loading messages for room ${roomId}:`, error);
+      room.messages = [];
+    }
+
     // Send room info to joining user
     socket.emit('room-joined', {
       roomId: roomId,
       users: Array.from(room.users.values()),
-      recentMessages: room.messages.slice(-50) // Last 50 messages
+      recentMessages: room.messages
     });
 
     // Notify other users in room
@@ -90,7 +107,7 @@ io.on('connection', (socket: AuthenticatedSocket) => {
   });
 
   // Handle chat messages
-  socket.on('send-message', (message: string) => {
+  socket.on('send-message', async (message: string) => {
     logger.info(`[CHAT] Received message from ${socket.id}: "${message}"`);
     
     const roomId = userRooms.get(socket.id);
@@ -99,33 +116,62 @@ io.on('connection', (socket: AuthenticatedSocket) => {
       return;
     }
 
-    const chatMessage = {
-      id: Date.now(),
-      userId: socket.id,
-      username: socket.username || 'Unknown User',
-      message: message,
-      timestamp: new Date()
-    };
+    try {
+      // Save message to database
+      const savedMessage = await chatService.saveMessage(
+        roomId,
+        socket.id,
+        socket.username || 'Unknown User',
+        message
+      );
 
-    logger.info('[CHAT] Created message object:', chatMessage);
+      const chatMessage = {
+        id: savedMessage._id.toString(),
+        userId: socket.id,
+        username: socket.username || 'Unknown User',
+        message: message,
+        timestamp: savedMessage.timestamp
+      };
 
-    // Store message in room
-    const room = rooms.get(roomId);
-    if (room) {
-      room.messages.push(chatMessage);
-      // Keep only last 100 messages
-      if (room.messages.length > 100) {
-        room.messages = room.messages.slice(-100);
+      logger.info('[CHAT] Saved message to database:', chatMessage);
+
+      // Store message in room (for immediate access)
+      const room = rooms.get(roomId);
+      if (room) {
+        room.messages.push(chatMessage);
+        // Keep only last 100 messages in memory
+        if (room.messages.length > 100) {
+          room.messages = room.messages.slice(-100);
+        }
+        logger.info(`[CHAT] Stored message in room ${roomId}, total messages: ${room.messages.length}`);
+      } else {
+        logger.warn(`[CHAT] Room ${roomId} not found when storing message`);
       }
-      logger.info(`[CHAT] Stored message in room ${roomId}, total messages: ${room.messages.length}`);
-    } else {
-      logger.warn(`[CHAT] Room ${roomId} not found when storing message`);
-    }
 
-    // Broadcast to all users in room
-    logger.info(`[CHAT] Broadcasting message to room ${roomId}:`, chatMessage);
-    io.to(roomId).emit('new-message', chatMessage);
-    logger.info('[CHAT] Message broadcast complete');
+      // Broadcast to all users in room
+      logger.info(`[CHAT] Broadcasting message to room ${roomId}:`, chatMessage);
+      io.to(roomId).emit('new-message', chatMessage);
+      logger.info('[CHAT] Message broadcast complete');
+
+      // Clean up old messages periodically (every 10 messages)
+      if (room && room.messages.length % 10 === 0) {
+        chatService.cleanupOldMessages(roomId, 1000).catch(error => {
+          logger.error(`[CHAT] Error cleaning up old messages for room ${roomId}:`, error);
+        });
+      }
+    } catch (error) {
+      logger.error(`[CHAT] Error saving message to database:`, error);
+      // Still broadcast the message even if database save fails
+      const chatMessage = {
+        id: Date.now(),
+        userId: socket.id,
+        username: socket.username || 'Unknown User',
+        message: message,
+        timestamp: new Date()
+      };
+      
+      io.to(roomId).emit('new-message', chatMessage);
+    }
   });
 
   // Handle disconnect
