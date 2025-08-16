@@ -5,7 +5,9 @@ import config from './config/config';
 import connectDB from './config/database';
 import app from './index';
 import { chatService } from './services/chat.service';
+import { CanvasModel } from './models/canvas-model';
 import logger from './utils/logger';
+import type { DrawingEvent, CanvasOperation } from './types/canvas';
 
 // Extend Socket interface to include username
 interface AuthenticatedSocket extends Socket {
@@ -178,6 +180,101 @@ io.on('connection', (socket: AuthenticatedSocket) => {
       };
 
       io.to(roomId).emit('new-message', chatMessage);
+    }
+  });
+
+  // Handle canvas drawing events
+  socket.on('canvas-draw', async (drawingEvent: DrawingEvent) => {
+    logger.info(`[CANVAS] Received drawing event from ${socket.id} in room ${drawingEvent.roomId}`);
+
+    // Broadcast immediately for real-time experience
+    const operation: CanvasOperation = {
+      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type: drawingEvent.type,
+      tool: drawingEvent.tool,
+      points: drawingEvent.points,
+      color: drawingEvent.color,
+      size: drawingEvent.size,
+      timestamp: new Date(),
+      userId: drawingEvent.userId,
+    };
+
+    // Broadcast to all users in the room (except sender) - FAST!
+    const broadcastEvent = {
+      ...drawingEvent,
+      operationId: operation.id,
+      timestamp: operation.timestamp,
+    };
+
+    socket.to(drawingEvent.roomId).emit('canvas-draw', broadcastEvent);
+
+    // Save to database asynchronously - Don't block the broadcast
+    setImmediate(async () => {
+      try {
+        // Use atomic update to avoid version conflicts
+        const result = await CanvasModel.findOneAndUpdate(
+          { roomId: drawingEvent.roomId },
+          {
+            $push: { operations: operation },
+            $setOnInsert: {
+              roomId: drawingEvent.roomId,
+              createdBy: socket.id,
+            },
+          },
+          {
+            upsert: true,
+            new: true,
+            runValidators: true,
+          }
+        );
+
+        logger.info(
+          `[CANVAS] Saved drawing operation to database for room ${drawingEvent.roomId}, operations count: ${result.operations.length}`
+        );
+      } catch (error) {
+        logger.error(
+          `[CANVAS] Error saving drawing operation for room ${drawingEvent.roomId}:`,
+          error
+        );
+      }
+    });
+  });
+
+  // Handle canvas clear events
+  socket.on('canvas-clear', async (roomId: string) => {
+    logger.info(`[CANVAS] Received clear event from ${socket.id} in room ${roomId}`);
+
+    try {
+      const canvas = await CanvasModel.findOne({ roomId });
+      if (canvas) {
+        canvas.operations = [];
+        await canvas.save();
+        logger.info(`[CANVAS] Cleared canvas for room ${roomId}`);
+      }
+
+      // Broadcast clear event to all users in the room (except sender)
+      socket.to(roomId).emit('canvas-clear', roomId);
+    } catch (error) {
+      logger.error(`[CANVAS] Error clearing canvas for room ${roomId}:`, error);
+    }
+  });
+
+  // Handle canvas undo events
+  socket.on('canvas-undo', async (roomId: string) => {
+    logger.info(`[CANVAS] Received undo event from ${socket.id} in room ${roomId}`);
+
+    try {
+      const canvas = await CanvasModel.findOne({ roomId });
+      if (canvas && canvas.operations.length > 0) {
+        canvas.operations.pop(); // Remove last operation
+        await canvas.save();
+        logger.info(`[CANVAS] Undid last operation for room ${roomId}`);
+      }
+
+      // Broadcast undo event to all users in the room (except sender)
+      socket.to(roomId).emit('canvas-undo', roomId);
+    } catch (error) {
+      logger.error(`[CANVAS] Error undoing operation for room ${roomId}:`, error);
     }
   });
 
