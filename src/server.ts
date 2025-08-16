@@ -15,6 +15,82 @@ interface AuthenticatedSocket extends Socket {
   username?: string;
 }
 
+// Batched canvas saves to prevent infinite loops
+const pendingCanvasOperations: Map<string, CanvasOperation[]> = new Map();
+const canvasSaveTimer: Map<string, NodeJS.Timeout> = new Map();
+
+// Function to save pending operations for a room
+async function savePendingOperations(roomId: string) {
+  const operations = pendingCanvasOperations.get(roomId);
+  if (!operations || operations.length === 0) return;
+
+  try {
+    // Get the room to find the creator ObjectId (needed for new canvas)
+    const room = await RoomModel.findOne({ roomId });
+    if (!room) {
+      logger.error(`[CANVAS] Room not found for batch save: ${roomId}`);
+      return;
+    }
+
+    // Try to add all pending operations at once
+    const result = await CanvasModel.findOneAndUpdate(
+      { roomId },
+      { $push: { operations: { $each: operations } } },
+      { new: true }
+    );
+
+    if (result) {
+      logger.info(`[CANVAS] Batch saved ${operations.length} operations for room ${roomId}, total: ${result.operations.length}`);
+    } else {
+      // Canvas doesn't exist, create it with all pending operations
+      const newCanvas = new CanvasModel({
+        roomId,
+        operations,
+        createdBy: room.createdBy
+      });
+      await newCanvas.save();
+      logger.info(`[CANVAS] Created new canvas with ${operations.length} operations for room ${roomId}`);
+    }
+
+    // Clear pending operations after successful save
+    pendingCanvasOperations.delete(roomId);
+    
+  } catch (error) {
+    logger.error(`[CANVAS] Error in batch save for room ${roomId}:`, error);
+    // Keep the operations for retry, but limit the size to prevent memory issues
+    const currentOps = pendingCanvasOperations.get(roomId) || [];
+    if (currentOps.length > 1000) {
+      // If too many operations failed, keep only the last 100
+      pendingCanvasOperations.set(roomId, currentOps.slice(-100));
+      logger.warn(`[CANVAS] Trimmed pending operations for room ${roomId} due to repeated failures`);
+    }
+  }
+}
+
+// Function to load existing canvas for a room
+async function loadExistingCanvas(roomId: string) {
+  try {
+    logger.info(`[CANVAS] 🔍 Looking for existing canvas for room ${roomId}`);
+    const canvas = await CanvasModel.findOne({ roomId });
+    
+    if (canvas) {
+      logger.info(`[CANVAS] 📂 Found canvas with ${canvas.operations.length} operations for room ${roomId}`);
+      if (canvas.operations.length > 0) {
+        logger.info(`[CANVAS] ✅ Returning ${canvas.operations.length} operations`);
+        return canvas.operations;
+      } else {
+        logger.info(`[CANVAS] 📭 Canvas exists but no operations for room ${roomId}`);
+      }
+    } else {
+      logger.info(`[CANVAS] ❌ No canvas found for room ${roomId}`);
+    }
+    return [];
+  } catch (error) {
+    logger.error(`[CANVAS] Error loading canvas for room ${roomId}:`, error);
+    return [];
+  }
+}
+
 // Create HTTP server and Socket.IO instance
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -96,11 +172,16 @@ io.on('connection', (socket: AuthenticatedSocket) => {
         currentRoom.messages = [];
       }
 
+      // Load existing canvas data
+      const existingCanvas = await loadExistingCanvas(roomId);
+      logger.info(`[CANVAS] 📤 Sending room-joined with ${existingCanvas.length} canvas operations to user ${username}`);
+
       // Send room info to joining user
       socket.emit('room-joined', {
         roomId: roomId,
         users: Array.from(currentRoom.users.values()),
         recentMessages: currentRoom.messages,
+        canvasOperations: existingCanvas, // Include existing canvas data
       });
 
       // Notify other users in room
@@ -209,8 +290,24 @@ io.on('connection', (socket: AuthenticatedSocket) => {
 
     socket.to(drawingEvent.roomId).emit('canvas-draw', broadcastEvent);
 
-    // Skip database saves for now to prevent infinite loops
-    // TODO: Implement batched or throttled database saves
+    // Add operation to pending batch for this room
+    const existingOps = pendingCanvasOperations.get(drawingEvent.roomId) || [];
+    existingOps.push(operation);
+    pendingCanvasOperations.set(drawingEvent.roomId, existingOps);
+
+    // Clear existing timer for this room
+    const existingTimer = canvasSaveTimer.get(drawingEvent.roomId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    // Set a new timer to save in 2 seconds (batching rapid operations)
+    const timer = setTimeout(() => {
+      canvasSaveTimer.delete(drawingEvent.roomId);
+      savePendingOperations(drawingEvent.roomId);
+    }, 2000);
+    
+    canvasSaveTimer.set(drawingEvent.roomId, timer);
   });
 
   // Handle canvas clear events
