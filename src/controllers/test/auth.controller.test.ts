@@ -62,7 +62,7 @@ describe('Auth Controller', () => {
       save: jest.fn(),
     };
 
-    // Setup mock request
+    // Setup mock request with extracted attributes (simulating middleware)
     mockRequest = {
       body: {
         email: 'test@example.com',
@@ -87,7 +87,12 @@ describe('Auth Controller', () => {
       await register(mockRequest as Request, mockResponse);
 
       expect(UserModel.findOne).toHaveBeenCalledWith({ email: 'test@example.com' });
-      expect(UserModel).toHaveBeenCalledWith(mockRequest.body);
+      expect(UserModel).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        password: 'password',
+        firstName: 'Test',
+        lastName: 'User',
+      });
       expect(mockUser.save).toHaveBeenCalled();
       expect(generateToken).toHaveBeenCalledWith(mockUser._id.toString(), 0);
       expect(mockResponse.cookie).toHaveBeenCalledWith('token', 'mock-token', {

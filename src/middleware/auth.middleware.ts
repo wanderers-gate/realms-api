@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { UserModel, type UserDocument } from '../models/user-model';
+import { type UserDocument, UserModel } from '../models/user-model';
 import { verifyJwt } from '../utils/jwt';
 
 // Add custom type for request with user
@@ -19,8 +19,6 @@ export const authenticate = async (
 ): Promise<void> => {
   try {
     const token = req.cookies.token;
-    // eslint-disable-next-line no-console
-    console.log('[AUTH] Token from cookie:', token ? 'Token exists' : 'No token');
 
     if (!token) {
       res.status(401).json({
@@ -51,8 +49,6 @@ export const authenticate = async (
 
     const user = await UserModel.findById(decoded.userId);
     if (!user) {
-      // eslint-disable-next-line no-console
-      console.error('[AUTH] User not found for ID:', decoded.userId);
       res.status(401).json({
         errors: [
           {
@@ -65,22 +61,8 @@ export const authenticate = async (
       return;
     }
 
-    // Log token versions for debugging
-    // eslint-disable-next-line no-console
-    console.log('[AUTH] Token versions:', {
-      decodedVersion: decoded.tokenVersion,
-      userVersion: user.tokenVersion,
-      userId: user._id.toString(),
-    });
-
     // Check if token version matches
     if (user.tokenVersion !== decoded.tokenVersion) {
-      // eslint-disable-next-line no-console
-      console.error('[AUTH] Token version mismatch:', {
-        decodedVersion: decoded.tokenVersion,
-        userVersion: user.tokenVersion,
-        userId: user._id.toString(),
-      });
       res.status(401).json({
         errors: [
           {
@@ -97,12 +79,7 @@ export const authenticate = async (
     req.userId = decoded.userId;
     req.user = user;
     next();
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error(
-      '[AUTH] Error during authentication:',
-      error instanceof Error ? error.message : 'Unknown error'
-    );
+  } catch (_error) {
     res.status(500).json({
       errors: [
         {

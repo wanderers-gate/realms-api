@@ -25,24 +25,10 @@ export const verifyJwt = <T extends TokenPayload = TokenPayload>(token: string):
   try {
     const secret = config.jwtSecret;
     if (!secret) throw new Error('JWT_SECRET is not defined');
-    // eslint-disable-next-line no-console
-    console.log('[JWT] Verifying token with secret:', secret ? 'Secret exists' : 'No secret');
 
     const decoded = jwt.verify(token, secret) as T;
-    // eslint-disable-next-line no-console
-    console.log('[JWT] Token decoded successfully:', {
-      userId: decoded.userId,
-      tokenVersion: decoded.tokenVersion,
-      exp: decoded.exp,
-      iat: decoded.iat,
-    });
     return decoded;
-  } catch (error) {
-    // eslint-disable-next-line no-console
-    console.error(
-      '[JWT] Token verification failed:',
-      error instanceof Error ? error.message : 'Unknown error'
-    );
+  } catch (_error) {
     return null;
   }
 };

@@ -34,3 +34,7 @@ eslint-results.json
 # Temporary files
 tmp/
 temp/ 
+
+CLAUDE.md
+DEVELOPMENT.md
+.cursorrules

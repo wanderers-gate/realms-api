@@ -4,7 +4,14 @@ import type { JsonApiResourceObject, JsonApiResponse } from '../types/json-api';
 
 const type = 'user';
 const idField = '_id';
-const attributes = ['email', 'firstName', 'lastName', 'createdAt', 'updatedAt'] as const;
+const attributes = [
+  'email',
+  'firstName',
+  'lastName',
+  'displayName',
+  'createdAt',
+  'updatedAt',
+] as const;
 
 export const serializeUser = (data: UserDocument | UserDocument[]): JsonApiResponse => {
   const resources = Array.isArray(data)
@@ -38,11 +45,13 @@ export const deserializeUser = (resource: JsonApiResourceObject): Partial<UserDo
     result[idField] = new Types.ObjectId(resource.id);
   }
 
-  if (resource.attributes) {
-    for (const [key, value] of Object.entries(resource.attributes)) {
-      if (attributes.includes(key as (typeof attributes)[number])) {
-        result[key as keyof UserDocument] = value as UserDocument[keyof UserDocument];
-      }
+  // Handle jsona format where data is directly in the resource object
+  // or standard JSON:API format where data is in attributes
+  const dataToProcess = resource.attributes || resource;
+
+  for (const [key, value] of Object.entries(dataToProcess)) {
+    if (attributes.includes(key as (typeof attributes)[number])) {
+      result[key as keyof UserDocument] = value as UserDocument[keyof UserDocument];
     }
   }
 

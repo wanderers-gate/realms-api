@@ -8,6 +8,20 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password, firstName, lastName, displayName } = req.body;
 
+    // Validate required fields
+    if (!email || !password || !firstName || !lastName) {
+      res.status(400).json({
+        errors: [
+          {
+            status: '400',
+            title: 'Bad Request',
+            detail: 'Email, password, firstName, and lastName are required',
+          },
+        ],
+      });
+      return;
+    }
+
     // Validate displayName if provided
     if (displayName && (displayName.trim().length === 0 || displayName.trim().length > 50)) {
       res.status(400).json({
@@ -48,10 +62,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     await user.save();
 
-    // Log tokenVersion after registration
-    // eslint-disable-next-line no-console
-    logger.info('[REGISTER] user.tokenVersion:', user.tokenVersion);
-
     // Generate token with initial tokenVersion
     const token = generateToken(user._id.toString(), user.tokenVersion);
 
@@ -80,6 +90,20 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
+
+    // Validate required fields
+    if (!email || !password) {
+      res.status(400).json({
+        errors: [
+          {
+            status: '400',
+            title: 'Bad Request',
+            detail: 'Email and password are required',
+          },
+        ],
+      });
+      return;
+    }
 
     // Find user
     const user = await UserModel.findOne({ email });
@@ -113,15 +137,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Log tokenVersion before increment
-    logger.info('[LOGIN] user.tokenVersion before:', user.tokenVersion);
-
     // Increment tokenVersion and save
     user.tokenVersion += 1;
     await user.save();
-
-    // Log tokenVersion after increment
-    logger.info('[LOGIN] user.tokenVersion after:', user.tokenVersion);
 
     // Generate new token with updated tokenVersion
     const token = generateToken(user._id.toString(), user.tokenVersion);
@@ -163,7 +181,7 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
   try {
     // The user should be available from the authentication middleware
     const user = req.user;
-    
+
     if (!user) {
       res.status(401).json({
         errors: [
@@ -203,7 +221,7 @@ export const authCheck = async (_req: Request, res: Response): Promise<void> => 
   try {
     // Since this route is now behind the authentication middleware,
     // if the request made it here, the user is already authenticated
-    
+
     // Simply return success status
     res.status(200).send();
   } catch (error) {

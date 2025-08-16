@@ -1,12 +1,14 @@
 import type { Request, Response } from 'express';
 import { UserModel } from '../models/user-model';
 import { deserializeUser, serializeUser } from '../serializers/user.serializer';
+import logger from '../utils/logger';
 
 export const index = async (_req: Request, res: Response): Promise<void> => {
   try {
     const users = await UserModel.find();
     res.json(serializeUser(users));
-  } catch {
+  } catch (error) {
+    logger.error('[USER INDEX] Error fetching users:', error);
     res.jsonApiError(500, [
       {
         status: '500',
@@ -31,7 +33,8 @@ export const show = async (req: Request, res: Response): Promise<void> => {
       return;
     }
     res.json(serializeUser(user));
-  } catch {
+  } catch (error) {
+    logger.error('[USER SHOW] Error fetching user:', error);
     res.jsonApiError(500, [
       {
         status: '500',
@@ -47,7 +50,8 @@ export const create = async (req: Request, res: Response): Promise<void> => {
     const userData = deserializeUser(req.body);
     const user = await UserModel.create(userData);
     res.status(201).json(serializeUser(user));
-  } catch {
+  } catch (error) {
+    logger.error('[USER CREATE] Error creating user:', error);
     res.jsonApiError(400, [
       {
         status: '400',
@@ -75,7 +79,8 @@ export const update = async (req: Request, res: Response): Promise<void> => {
     }
 
     res.json(serializeUser(user));
-  } catch {
+  } catch (error) {
+    logger.error('[USER UPDATE] Error updating user:', error);
     res.jsonApiError(400, [
       {
         status: '400',
@@ -100,7 +105,8 @@ export const destroy = async (req: Request, res: Response): Promise<void> => {
       return;
     }
     res.status(204).send();
-  } catch {
+  } catch (error) {
+    logger.error('[USER DELETE] Error deleting user:', error);
     res.jsonApiError(500, [
       {
         status: '500',
