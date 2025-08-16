@@ -8,6 +8,20 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password, firstName, lastName, displayName } = req.body;
 
+    // Validate required fields
+    if (!email || !password || !firstName || !lastName) {
+      res.status(400).json({
+        errors: [
+          {
+            status: '400',
+            title: 'Bad Request',
+            detail: 'Email, password, firstName, and lastName are required',
+          },
+        ],
+      });
+      return;
+    }
+
     // Validate displayName if provided
     if (displayName && (displayName.trim().length === 0 || displayName.trim().length > 50)) {
       res.status(400).json({
@@ -76,6 +90,20 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
+
+    // Validate required fields
+    if (!email || !password) {
+      res.status(400).json({
+        errors: [
+          {
+            status: '400',
+            title: 'Bad Request',
+            detail: 'Email and password are required',
+          },
+        ],
+      });
+      return;
+    }
 
     // Find user
     const user = await UserModel.findOne({ email });

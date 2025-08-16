@@ -75,12 +75,14 @@ const serializeRoomResource = (data: RoomDocument): JsonApiResourceObject => {
 export const deserializeRoom = (resource: JsonApiResourceObject): Partial<RoomDocument> => {
   const result: Partial<RoomDocument> = {};
 
+  // Handle jsona format where data is directly in the resource object
+  // or standard JSON:API format where data is in attributes
+  const dataToProcess = resource.attributes || resource;
+
   // Extract attributes
-  if (resource.attributes) {
-    for (const attr of attributes) {
-      if (attr in resource.attributes) {
-        (result as RoomAttributes)[attr] = (resource.attributes as RoomAttributes)[attr];
-      }
+  for (const attr of attributes) {
+    if (attr in dataToProcess) {
+      (result as RoomAttributes)[attr] = (dataToProcess as RoomAttributes)[attr];
     }
   }
 

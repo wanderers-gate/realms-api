@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import type { Types } from 'mongoose';
 import { type Room, RoomModel } from '../models/room-model';
 import { UserModel } from '../models/user-model';
-import { serializeRoom, serializeRoomWithIncludes } from '../serializers/room.serializer';
+import { deserializeRoom, serializeRoom, serializeRoomWithIncludes } from '../serializers/room.serializer';
 import type { JsonApiResourceObject } from '../types/json-api';
 
 // Type for populated user data
@@ -26,7 +26,23 @@ interface RoomQuery {
 // Create a new room
 export const createRoom = async (req: Request, res: Response) => {
   try {
-    const { name, description, maxPlayers, settings } = req.body;
+    // Handle the case where middleware might not have processed the request yet
+    let attributes: Record<string, unknown>;
+    if (req.body.data?.attributes) {
+      // Full JSON:API format - extract attributes
+      attributes = req.body.data.attributes;
+    } else {
+      // Already processed by middleware
+      attributes = req.body;
+    }
+    
+    const jsonApiResource = {
+      type: 'room',
+      id: '', // Will be ignored for creation
+      attributes,
+    };
+    const deserializedData = deserializeRoom(jsonApiResource);
+    const { name, description, maxPlayers, settings } = deserializedData;
     const userId = req.userId;
 
     if (!userId) {
@@ -242,7 +258,24 @@ export const updateRoom = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
     const userId = req.userId;
-    const { name, description, maxPlayers, settings } = req.body;
+    
+    // Handle the case where middleware might not have processed the request yet
+    let attributes: Record<string, unknown>;
+    if (req.body.data?.attributes) {
+      // Full JSON:API format - extract attributes
+      attributes = req.body.data.attributes;
+    } else {
+      // Already processed by middleware
+      attributes = req.body;
+    }
+    
+    const jsonApiResource = {
+      type: 'room',
+      id: '', // Will be ignored for updates
+      attributes,
+    };
+    const deserializedData = deserializeRoom(jsonApiResource);
+    const { name, description, maxPlayers, settings } = deserializedData;
 
     if (!userId) {
       return res.status(401).json({

@@ -45,11 +45,13 @@ export const deserializeUser = (resource: JsonApiResourceObject): Partial<UserDo
     result[idField] = new Types.ObjectId(resource.id);
   }
 
-  if (resource.attributes) {
-    for (const [key, value] of Object.entries(resource.attributes)) {
-      if (attributes.includes(key as (typeof attributes)[number])) {
-        result[key as keyof UserDocument] = value as UserDocument[keyof UserDocument];
-      }
+  // Handle jsona format where data is directly in the resource object
+  // or standard JSON:API format where data is in attributes
+  const dataToProcess = resource.attributes || resource;
+
+  for (const [key, value] of Object.entries(dataToProcess)) {
+    if (attributes.includes(key as (typeof attributes)[number])) {
+      result[key as keyof UserDocument] = value as UserDocument[keyof UserDocument];
     }
   }
 

@@ -85,13 +85,18 @@ describe('Room Controller', () => {
     it('should create a room successfully', async () => {
       const req = mockRequest(
         {
-          name: 'Test Room',
-          description: 'A test room',
-          maxPlayers: 5,
-          settings: {
-            isPrivate: false,
-            allowGuests: true,
-            gridSize: 50,
+          data: {
+            type: 'room',
+            attributes: {
+              name: 'Test Room',
+              description: 'A test room',
+              maxPlayers: 5,
+              settings: {
+                isPrivate: false,
+                allowGuests: true,
+                gridSize: 50,
+              },
+            },
           },
         },
         {},
@@ -353,8 +358,8 @@ describe('Room Controller', () => {
             relationships: expect.objectContaining({
               createdBy: expect.objectContaining({
                 data: expect.objectContaining({
-                  type: 'user',
                   id: testUser._id.toString(),
+                  type: 'user',
                 }),
               }),
             }),
@@ -386,7 +391,15 @@ describe('Room Controller', () => {
       await room.save();
 
       const req = mockRequest(
-        { name: 'Updated Name', description: 'Updated description' },
+        {
+          data: {
+            type: 'room',
+            attributes: {
+              name: 'Updated Name',
+              description: 'Updated description',
+            },
+          },
+        },
         { roomId: room.roomId },
         {},
         { id: testUser._id.toString() }
@@ -417,7 +430,14 @@ describe('Room Controller', () => {
       await room.save();
 
       const req = mockRequest(
-        { name: 'Updated Name' },
+        {
+          data: {
+            type: 'room',
+            attributes: {
+              name: 'Updated Name',
+            },
+          },
+        },
         { roomId: room.roomId },
         {},
         { id: new Types.ObjectId().toString() }
