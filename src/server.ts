@@ -6,6 +6,7 @@ import connectDB from './config/database';
 import app from './index';
 import { chatService } from './services/chat.service';
 import { CanvasModel } from './models/canvas-model';
+import { RoomModel } from './models/room-model';
 import logger from './utils/logger';
 import type { DrawingEvent, CanvasOperation } from './types/canvas';
 
@@ -208,36 +209,8 @@ io.on('connection', (socket: AuthenticatedSocket) => {
 
     socket.to(drawingEvent.roomId).emit('canvas-draw', broadcastEvent);
 
-    // Save to database asynchronously - Don't block the broadcast
-    setImmediate(async () => {
-      try {
-        // Use atomic update to avoid version conflicts
-        const result = await CanvasModel.findOneAndUpdate(
-          { roomId: drawingEvent.roomId },
-          {
-            $push: { operations: operation },
-            $setOnInsert: {
-              roomId: drawingEvent.roomId,
-              createdBy: socket.id,
-            },
-          },
-          {
-            upsert: true,
-            new: true,
-            runValidators: true,
-          }
-        );
-
-        logger.info(
-          `[CANVAS] Saved drawing operation to database for room ${drawingEvent.roomId}, operations count: ${result.operations.length}`
-        );
-      } catch (error) {
-        logger.error(
-          `[CANVAS] Error saving drawing operation for room ${drawingEvent.roomId}:`,
-          error
-        );
-      }
-    });
+    // Skip database saves for now to prevent infinite loops
+    // TODO: Implement batched or throttled database saves
   });
 
   // Handle canvas clear events
