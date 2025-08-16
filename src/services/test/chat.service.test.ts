@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
-import mongoose from 'mongoose';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import { chatService } from '../chat.service';
+import mongoose from 'mongoose';
 import { ChatMessageModel } from '../../models/chat-message-model';
+import { chatService } from '../chat.service';
 
 describe('Chat Service', () => {
   let mongoServer: MongoMemoryServer;
@@ -38,7 +38,7 @@ describe('Chat Service', () => {
   describe('getRecentMessages', () => {
     it('should return recent messages for a room', async () => {
       const roomId = 'TEST123';
-      
+
       // Create some test messages
       const messages = [
         { roomId, userId: 'user1', username: 'User1', message: 'Message 1' },
@@ -60,7 +60,7 @@ describe('Chat Service', () => {
 
     it('should limit the number of messages returned', async () => {
       const roomId = 'TEST123';
-      
+
       // Create 5 test messages
       for (let i = 1; i <= 5; i++) {
         await chatService.saveMessage(roomId, `user${i}`, `User${i}`, `Message ${i}`);
@@ -78,7 +78,7 @@ describe('Chat Service', () => {
   describe('cleanupOldMessages', () => {
     it('should remove old messages when limit is exceeded', async () => {
       const roomId = 'TEST123';
-      
+
       // Create 15 test messages
       for (let i = 1; i <= 15; i++) {
         await chatService.saveMessage(roomId, `user${i}`, `User${i}`, `Message ${i}`);

@@ -47,8 +47,7 @@ export const show = async (req: Request, res: Response): Promise<void> => {
 
 export const create = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userData = deserializeUser(req.body);
-    const user = await UserModel.create(userData);
+    const user = await UserModel.create(req.body);
     res.status(201).json(serializeUser(user));
   } catch (error) {
     logger.error('[USER CREATE] Error creating user:', error);
@@ -64,8 +63,7 @@ export const create = async (req: Request, res: Response): Promise<void> => {
 
 export const update = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userData = deserializeUser(req.body);
-    const user = await UserModel.findByIdAndUpdate(req.params.id, userData, { new: true });
+    const user = await UserModel.findByIdAndUpdate(req.params.id, req.body, { new: true });
 
     if (!user) {
       res.jsonApiError(404, [

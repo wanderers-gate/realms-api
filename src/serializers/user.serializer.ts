@@ -4,7 +4,14 @@ import type { JsonApiResourceObject, JsonApiResponse } from '../types/json-api';
 
 const type = 'user';
 const idField = '_id';
-const attributes = ['email', 'firstName', 'lastName', 'displayName', 'createdAt', 'updatedAt'] as const;
+const attributes = [
+  'email',
+  'firstName',
+  'lastName',
+  'displayName',
+  'createdAt',
+  'updatedAt',
+] as const;
 
 export const serializeUser = (data: UserDocument | UserDocument[]): JsonApiResponse => {
   const resources = Array.isArray(data)

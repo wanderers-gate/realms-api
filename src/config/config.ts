@@ -16,11 +16,14 @@ interface Config {
 
 const getMongoDBUri = (): string => {
   const useK8s = process.env.USE_K8S_DB === 'true';
-  
+
   if (useK8s) {
-    return process.env.MONGODB_K8S_URI || 'mongodb://admin:mongodb-password@localhost:27018/realms?authSource=admin';
+    return (
+      process.env.MONGODB_K8S_URI ||
+      'mongodb://admin:mongodb-password@localhost:27018/realms?authSource=admin'
+    );
   }
-  
+
   return process.env.MONGODB_URI || 'mongodb://localhost:27017/realms';
 };
 

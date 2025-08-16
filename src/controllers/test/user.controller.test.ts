@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { Types } from 'mongoose';
 import mongoose from 'mongoose';
 import { UserModel } from '../../models/user-model';
-import { deserializeUser, serializeUser } from '../../serializers/user.serializer';
+import { serializeUser } from '../../serializers/user.serializer';
 import { create, destroy, index, show, update } from '../user.controller';
 
 // Mock dependencies
@@ -111,21 +111,20 @@ describe('User Controller', () => {
     it('should create a new user', async () => {
       const mockUserData = { email: 'test@example.com' };
       const mockCreatedUser = { _id: '1', ...mockUserData };
-      mockRequest.body = { data: { attributes: mockUserData } };
-      (deserializeUser as jest.Mock).mockReturnValue(mockUserData);
+      // Simulate middleware behavior: extract attributes from JSON:API format
+      mockRequest.body = mockUserData;
       (UserModel.create as jest.Mock).mockResolvedValue(mockCreatedUser);
       (serializeUser as jest.Mock).mockReturnValue({ data: mockCreatedUser });
 
       await create(mockRequest, mockResponse);
 
-      expect(deserializeUser).toHaveBeenCalledWith(mockRequest.body);
       expect(UserModel.create).toHaveBeenCalledWith(mockUserData);
       expect(mockResponse.status).toHaveBeenCalledWith(201);
       expect(mockResponse.json).toHaveBeenCalledWith({ data: mockCreatedUser });
     });
 
     it('should handle errors', async () => {
-      mockRequest.body = { data: { attributes: {} } };
+      mockRequest.body = {};
       (UserModel.create as jest.Mock).mockRejectedValue(new Error('Database error'));
 
       await create(mockRequest, mockResponse);
@@ -145,21 +144,20 @@ describe('User Controller', () => {
       const mockUserData = { email: 'updated@example.com' };
       const mockUpdatedUser = { _id: '1', ...mockUserData };
       mockRequest.params.id = '1';
-      mockRequest.body = { data: { attributes: mockUserData } };
-      (deserializeUser as jest.Mock).mockReturnValue(mockUserData);
+      // Simulate middleware behavior: extract attributes from JSON:API format
+      mockRequest.body = mockUserData;
       (UserModel.findByIdAndUpdate as jest.Mock).mockResolvedValue(mockUpdatedUser);
       (serializeUser as jest.Mock).mockReturnValue({ data: mockUpdatedUser });
 
       await update(mockRequest, mockResponse);
 
-      expect(deserializeUser).toHaveBeenCalledWith(mockRequest.body);
       expect(UserModel.findByIdAndUpdate).toHaveBeenCalledWith('1', mockUserData, { new: true });
       expect(mockResponse.json).toHaveBeenCalledWith({ data: mockUpdatedUser });
     });
 
     it('should return 404 if user not found', async () => {
       mockRequest.params.id = '1';
-      mockRequest.body = { data: { attributes: {} } };
+      mockRequest.body = {};
       (UserModel.findByIdAndUpdate as jest.Mock).mockResolvedValue(null);
 
       await update(mockRequest, mockResponse);
@@ -175,7 +173,7 @@ describe('User Controller', () => {
 
     it('should handle errors', async () => {
       mockRequest.params.id = '1';
-      mockRequest.body = { data: { attributes: {} } };
+      mockRequest.body = {};
       (UserModel.findByIdAndUpdate as jest.Mock).mockRejectedValue(new Error('Database error'));
 
       await update(mockRequest, mockResponse);

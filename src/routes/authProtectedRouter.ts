@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authCheck, logout, getCurrentUser } from '../controllers/auth.controller';
+import { authCheck, getCurrentUser, logout } from '../controllers/auth.controller';
 
 const authProtectedRouter = Router();
 
@@ -8,4 +8,4 @@ authProtectedRouter.get('/check', authCheck);
 authProtectedRouter.get('/me', getCurrentUser);
 authProtectedRouter.post('/logout', logout);
 
-export default authProtectedRouter; 
+export default authProtectedRouter;

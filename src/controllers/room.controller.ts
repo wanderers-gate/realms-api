@@ -1,9 +1,9 @@
 import type { Request, Response } from 'express';
+import type { Types } from 'mongoose';
 import { type Room, RoomModel } from '../models/room-model';
 import { UserModel } from '../models/user-model';
 import { serializeRoom, serializeRoomWithIncludes } from '../serializers/room.serializer';
 import type { JsonApiResourceObject } from '../types/json-api';
-import type { Types } from 'mongoose';
 
 // Type for populated user data
 interface PopulatedUser {
@@ -131,7 +131,7 @@ export const getRooms = async (req: Request, res: Response) => {
 
     // Include the populated createdBy user data for each room
     const includes: Record<string, JsonApiResourceObject> = {};
-    rooms.forEach((room) => {
+    for (const room of rooms) {
       if (room.createdBy && typeof room.createdBy === 'object' && 'firstName' in room.createdBy) {
         const createdByUser = room.createdBy as unknown as PopulatedUser;
         includes[`user-${createdByUser._id}`] = {
@@ -144,7 +144,7 @@ export const getRooms = async (req: Request, res: Response) => {
           },
         };
       }
-    });
+    }
 
     const response = serializeRoomWithIncludes(rooms, includes);
 

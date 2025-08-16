@@ -153,7 +153,7 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
   try {
     // The user should be available from the authentication middleware
     const user = req.user;
-    
+
     if (!user) {
       res.status(401).json({
         errors: [
@@ -193,7 +193,7 @@ export const authCheck = async (_req: Request, res: Response): Promise<void> => 
   try {
     // Since this route is now behind the authentication middleware,
     // if the request made it here, the user is already authenticated
-    
+
     // Simply return success status
     res.status(200).send();
   } catch (error) {

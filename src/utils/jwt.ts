@@ -28,7 +28,7 @@ export const verifyJwt = <T extends TokenPayload = TokenPayload>(token: string):
 
     const decoded = jwt.verify(token, secret) as T;
     return decoded;
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 };

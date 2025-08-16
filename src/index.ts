@@ -3,8 +3,8 @@ import cors from 'cors';
 import express from 'express';
 import { authenticate } from './middleware/auth.middleware';
 import { jsonApiMiddleware } from './middleware/json-api';
-import authRouter from './routes/authRouter';
 import authProtectedRouter from './routes/authProtectedRouter';
+import authRouter from './routes/authRouter';
 import roomRouter from './routes/roomRouter';
 import userRouter from './routes/userRouter';
 
@@ -26,7 +26,8 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       if (allowedOrigins.indexOf(origin) === -1) {
-        const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+        const msg =
+          'The CORS policy for this site does not allow access from the specified Origin.';
         return callback(new Error(msg), false);
       }
       return callback(null, true);

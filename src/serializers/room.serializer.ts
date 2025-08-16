@@ -1,15 +1,27 @@
 import { Types } from 'mongoose';
 import type { RoomDocument } from '../models/room-model';
-import type { JsonApiResourceObject, JsonApiResponse, JsonApiRelationship } from '../types/json-api';
+import type {
+  JsonApiRelationship,
+  JsonApiResourceObject,
+  JsonApiResponse,
+} from '../types/json-api';
 
 const type = 'room';
 const idField = '_id';
 const attributes = [
-  'name', 'description', 'roomId', 'isActive', 'maxPlayers', 'currentPlayers',
-  'settings', 'createdAt', 'updatedAt', 'lastActivity',
+  'name',
+  'description',
+  'roomId',
+  'isActive',
+  'maxPlayers',
+  'currentPlayers',
+  'settings',
+  'createdAt',
+  'updatedAt',
+  'lastActivity',
 ] as const;
 
-type RoomAttributes = Record<typeof attributes[number], unknown>;
+type RoomAttributes = Record<(typeof attributes)[number], unknown>;
 
 export const serializeRoom = (data: RoomDocument | RoomDocument[]): JsonApiResponse => {
   if (Array.isArray(data)) {
@@ -84,7 +96,9 @@ export const deserializeRoom = (resource: JsonApiResourceObject): Partial<RoomDo
 
   // Handle createdBy in attributes (for test case)
   if (resource.attributes?.createdBy && !result.createdBy) {
-    const attributesWithCreatedBy = resource.attributes as RoomAttributes & { createdBy: string | Types.ObjectId };
+    const attributesWithCreatedBy = resource.attributes as RoomAttributes & {
+      createdBy: string | Types.ObjectId;
+    };
     const createdBy = attributesWithCreatedBy.createdBy;
     if (typeof createdBy === 'string') {
       // biome-ignore lint/suspicious/noExplicitAny: This is for test compatibility with string values
@@ -102,7 +116,7 @@ export const serializeRoomWithIncludes = (
   includes?: Record<string, JsonApiResourceObject>
 ): JsonApiResponse => {
   const response = serializeRoom(data);
-  
+
   if (includes && Object.keys(includes).length > 0) {
     response.included = Object.values(includes);
   }

@@ -1,8 +1,8 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, expect, it } from '@jest/globals';
 import { Types } from 'mongoose';
-import { serializeRoom, deserializeRoom, serializeRoomWithIncludes } from '../room.serializer';
 import type { RoomDocument } from '../../models/room-model';
-import type { JsonApiResponse, JsonApiResourceObject } from '../../types/json-api';
+import type { JsonApiResourceObject, JsonApiResponse } from '../../types/json-api';
+import { deserializeRoom, serializeRoom, serializeRoomWithIncludes } from '../room.serializer';
 
 // Helper function to safely access array data
 const getArrayData = (response: JsonApiResponse): JsonApiResourceObject[] => {
@@ -78,7 +78,7 @@ describe('Room Serializer', () => {
 
       expect(Array.isArray(result.data)).toBe(true);
       expect(result.data).toHaveLength(2);
-      
+
       const arrayData = getArrayData(result);
       expect(arrayData[0].type).toBe('room');
       expect(arrayData[1].type).toBe('room');

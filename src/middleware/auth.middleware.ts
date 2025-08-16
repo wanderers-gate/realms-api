@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { UserModel, type UserDocument } from '../models/user-model';
+import { type UserDocument, UserModel } from '../models/user-model';
 import { verifyJwt } from '../utils/jwt';
 
 // Add custom type for request with user
@@ -79,7 +79,7 @@ export const authenticate = async (
     req.userId = decoded.userId;
     req.user = user;
     next();
-  } catch (error) {
+  } catch (_error) {
     res.status(500).json({
       errors: [
         {

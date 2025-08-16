@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
+import type { Request, Response } from 'express';
+import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Types } from 'mongoose';
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import type { Request, Response } from 'express';
-import { createRoom, getRooms, getRoom, updateRoom, deleteRoom } from '../room.controller';
 import { RoomModel } from '../../models/room-model';
 import { UserModel } from '../../models/user-model';
+import { createRoom, deleteRoom, getRoom, getRooms, updateRoom } from '../room.controller';
 
 // Mock the response object
 const mockResponse = () => {
@@ -28,7 +28,7 @@ const mockRequest = (
     query,
     userId: user?.id,
     // biome-ignore lint/suspicious/noExplicitAny: This is for test compatibility with middleware expectations
-    user: user ? { id: user.id } as any : undefined,
+    user: user ? ({ id: user.id } as any) : undefined,
   };
   return req as Request;
 };
@@ -470,7 +470,12 @@ describe('Room Controller', () => {
       });
       await room.save();
 
-      const req = mockRequest({}, { roomId: room.roomId }, {}, { id: new Types.ObjectId().toString() });
+      const req = mockRequest(
+        {},
+        { roomId: room.roomId },
+        {},
+        { id: new Types.ObjectId().toString() }
+      );
       const res = mockResponse();
 
       await deleteRoom(req, res);
