@@ -39,18 +39,18 @@ async function savePendingOperations(roomId: string) {
       { new: true }
     );
 
-    if (result) {
-      logger.info(`[CANVAS] Batch saved ${operations.length} operations for room ${roomId}, total: ${result.operations.length}`);
-    } else {
-      // Canvas doesn't exist, create it with all pending operations
-      const newCanvas = new CanvasModel({
-        roomId,
-        operations,
-        createdBy: room.createdBy
-      });
-      await newCanvas.save();
-      logger.info(`[CANVAS] Created new canvas with ${operations.length} operations for room ${roomId}`);
-    }
+                    if (result) {
+                  logger.info(`[CANVAS] Batch saved ${operations.length} operations for room ${roomId}`);
+                } else {
+                  // Canvas doesn't exist, create it with all pending operations
+                  const newCanvas = new CanvasModel({
+                    roomId,
+                    operations,
+                    createdBy: room.createdBy
+                  });
+                  await newCanvas.save();
+                  logger.info(`[CANVAS] Created new canvas with ${operations.length} operations for room ${roomId}`);
+                }
 
     // Clear pending operations after successful save
     pendingCanvasOperations.delete(roomId);
@@ -70,19 +70,11 @@ async function savePendingOperations(roomId: string) {
 // Function to load existing canvas for a room
 async function loadExistingCanvas(roomId: string) {
   try {
-    logger.info(`[CANVAS] 🔍 Looking for existing canvas for room ${roomId}`);
     const canvas = await CanvasModel.findOne({ roomId });
     
-    if (canvas) {
-      logger.info(`[CANVAS] 📂 Found canvas with ${canvas.operations.length} operations for room ${roomId}`);
-      if (canvas.operations.length > 0) {
-        logger.info(`[CANVAS] ✅ Returning ${canvas.operations.length} operations`);
-        return canvas.operations;
-      } else {
-        logger.info(`[CANVAS] 📭 Canvas exists but no operations for room ${roomId}`);
-      }
-    } else {
-      logger.info(`[CANVAS] ❌ No canvas found for room ${roomId}`);
+    if (canvas && canvas.operations.length > 0) {
+      logger.info(`[CANVAS] Loaded ${canvas.operations.length} operations for room ${roomId}`);
+      return canvas.operations;
     }
     return [];
   } catch (error) {
@@ -174,7 +166,6 @@ io.on('connection', (socket: AuthenticatedSocket) => {
 
       // Load existing canvas data
       const existingCanvas = await loadExistingCanvas(roomId);
-      logger.info(`[CANVAS] 📤 Sending room-joined with ${existingCanvas.length} canvas operations to user ${username}`);
 
       // Send room info to joining user
       socket.emit('room-joined', {
@@ -265,9 +256,8 @@ io.on('connection', (socket: AuthenticatedSocket) => {
     }
   });
 
-  // Handle canvas drawing events
-  socket.on('canvas-draw', async (drawingEvent: DrawingEvent) => {
-    logger.info(`[CANVAS] Received drawing event from ${socket.id} in room ${drawingEvent.roomId}`);
+      // Handle canvas drawing events
+    socket.on('canvas-draw', async (drawingEvent: DrawingEvent) => {
 
     // Broadcast immediately for real-time experience
     const operation: CanvasOperation = {
@@ -310,24 +300,6 @@ io.on('connection', (socket: AuthenticatedSocket) => {
     canvasSaveTimer.set(drawingEvent.roomId, timer);
   });
 
-  // Handle canvas clear events
-  socket.on('canvas-clear', async (roomId: string) => {
-    logger.info(`[CANVAS] Received clear event from ${socket.id} in room ${roomId}`);
-
-    try {
-      const canvas = await CanvasModel.findOne({ roomId });
-      if (canvas) {
-        canvas.operations = [];
-        await canvas.save();
-        logger.info(`[CANVAS] Cleared canvas for room ${roomId}`);
-      }
-
-      // Broadcast clear event to all users in the room (except sender)
-      socket.to(roomId).emit('canvas-clear', roomId);
-    } catch (error) {
-      logger.error(`[CANVAS] Error clearing canvas for room ${roomId}:`, error);
-    }
-  });
 
   // Handle canvas undo events
   socket.on('canvas-undo', async (roomId: string) => {
@@ -345,6 +317,33 @@ io.on('connection', (socket: AuthenticatedSocket) => {
       socket.to(roomId).emit('canvas-undo', roomId);
     } catch (error) {
       logger.error(`[CANVAS] Error undoing operation for room ${roomId}:`, error);
+    }
+  });
+
+  // Handle canvas operation deletion events
+  socket.on('canvas-delete', async (data: { roomId: string; operationIds: string[] }) => {
+    logger.info(`[CANVAS] Received delete event from ${socket.id} in room ${data.roomId} for ${data.operationIds.length} operations`);
+
+    try {
+      const canvas = await CanvasModel.findOne({ roomId: data.roomId });
+      if (canvas) {
+        // Filter out operations with the specified IDs
+        const initialCount = canvas.operations.length;
+        canvas.operations = canvas.operations.filter(op => !data.operationIds.includes(op.id));
+        const deletedCount = initialCount - canvas.operations.length;
+        
+        await canvas.save();
+        logger.info(`[CANVAS] Deleted ${deletedCount} operations for room ${data.roomId}`);
+        
+        // Broadcast deletion event to all users in the room (except sender)
+        socket.to(data.roomId).emit('canvas-delete', {
+          roomId: data.roomId,
+          operationIds: data.operationIds,
+          deletedCount
+        });
+      }
+    } catch (error) {
+      logger.error(`[CANVAS] Error deleting canvas operations for room ${data.roomId}:`, error);
     }
   });
 

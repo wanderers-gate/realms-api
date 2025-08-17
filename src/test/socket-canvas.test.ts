@@ -102,7 +102,7 @@ describe('Canvas Socket Events', () => {
           });
         } catch (error) {
           // Handle duplicate key error gracefully
-          if (error.code === 11000) {
+          if (error && typeof error === 'object' && 'code' in error && error.code === 11000) {
             // Canvas already exists, try to find and update it
             const existingCanvas = await CanvasModel.findOne({ roomId: drawingEvent.roomId });
             if (existingCanvas) {

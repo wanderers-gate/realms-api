@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticateOptionalJwt } from '../middleware/authenticate';
 import { jsonApiMiddleware } from '../middleware/json-api';
-import { getCanvas, addCanvasOperation, clearCanvas } from '../controllers/canvas.controller';
+import { getCanvas, addCanvasOperation, deleteCanvasOperations } from '../controllers/canvas.controller';
 
 const router = Router();
 
@@ -12,6 +12,6 @@ router.use(authenticateOptionalJwt()); // Allow guests to view canvas if room al
 // Canvas routes
 router.get('/:roomId', getCanvas); // GET /api/canvas/:roomId
 router.post('/:roomId/operations', addCanvasOperation); // POST /api/canvas/:roomId/operations
-router.delete('/:roomId', clearCanvas); // DELETE /api/canvas/:roomId
+router.delete('/:roomId/operations', deleteCanvasOperations); // DELETE /api/canvas/:roomId/operations
 
 export default router;

@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 import { CanvasModel } from '../../models/canvas-model';
 import { RoomModel } from '../../models/room-model';
 import { UserModel } from '../../models/user-model';
-import { addCanvasOperation, clearCanvas, getCanvas } from '../canvas.controller';
+import { addCanvasOperation, getCanvas } from '../canvas.controller';
 
 // Mock the response object
 const mockResponse = () => {
@@ -28,7 +28,7 @@ const mockRequest = (
     params,
     query,
     userId: user?.id,
-    user: user ? ({ id: user.id } as unknown) : undefined,
+    user: undefined,
   };
   return req as Request;
 };
@@ -350,98 +350,4 @@ describe('Canvas Controller', () => {
     });
   });
 
-  describe('clearCanvas', () => {
-    it('should clear canvas successfully if user is room creator', async () => {
-      // Create a canvas with operations
-      const canvas = new CanvasModel({
-        roomId: testRoom.roomId,
-        operations: [
-          {
-            id: 'op1',
-            type: 'draw',
-            tool: 'pen',
-            points: [{ x: 10, y: 20 }],
-            color: '#000000',
-            size: 2,
-            timestamp: new Date(),
-            userId: testUser._id.toString(),
-          },
-        ],
-        createdBy: testUser._id,
-      });
-      await canvas.save();
-
-      const req = mockRequest({}, { roomId: testRoom.roomId }, {}, { id: testUser._id.toString() });
-      const res = mockResponse();
-
-      await clearCanvas(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(204);
-      expect(res.json).toHaveBeenCalledWith({});
-
-      // Verify canvas was cleared
-      const updatedCanvas = await CanvasModel.findOne({ roomId: testRoom.roomId });
-      expect(updatedCanvas?.operations).toHaveLength(0);
-    });
-
-    it('should return 401 if user is not authenticated', async () => {
-      const req = mockRequest({}, { roomId: testRoom.roomId }, {});
-      const res = mockResponse();
-
-      await clearCanvas(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User must be authenticated to clear canvas',
-          },
-        ],
-      });
-    });
-
-    it('should return 403 if user is not the room creator', async () => {
-      // Create another user
-      const otherUser = new UserModel({
-        email: 'other@example.com',
-        password: 'password123',
-        firstName: 'Other',
-        lastName: 'User',
-        displayName: 'Other User',
-      });
-      await otherUser.save();
-
-      const req = mockRequest(
-        {},
-        { roomId: testRoom.roomId },
-        {},
-        { id: otherUser._id.toString() }
-      );
-      const res = mockResponse();
-
-      await clearCanvas(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '403',
-            title: 'Forbidden',
-            detail: 'Only the room creator can clear the canvas',
-          },
-        ],
-      });
-    });
-
-    it('should return 404 for non-existent room', async () => {
-      const req = mockRequest({}, { roomId: 'NONEXISTENT' }, {}, { id: testUser._id.toString() });
-      const res = mockResponse();
-
-      await clearCanvas(req, res);
-
-      expect(res.status).toHaveBeenCalledWith(404);
-    });
-  });
 });

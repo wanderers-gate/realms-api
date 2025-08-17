@@ -78,12 +78,22 @@ describe('Canvas Serializer', () => {
 
       expect(result.data).toBeInstanceOf(Array);
       expect(result.data).toHaveLength(2);
-      expect(result.data[0]).toHaveProperty('type', 'canvas');
-      expect(result.data[1]).toHaveProperty('type', 'canvas');
+      if (Array.isArray(result.data)) {
+        expect(result.data[0]).toHaveProperty('type', 'canvas');
+        expect(result.data[1]).toHaveProperty('type', 'canvas');
+      }
     });
 
     it('should handle canvas without relationships', () => {
-      const canvasWithoutCreator = { ...mockCanvasDoc, createdBy: undefined } as CanvasDocument;
+      const canvasWithoutCreator = {
+        _id: 'canvas123',
+        roomId: 'TEST123',
+        operations: [],
+        lastModified: new Date('2023-01-01T12:00:00Z'),
+        version: 5,
+        createdAt: new Date('2023-01-01T00:00:00Z'),
+        updatedAt: new Date('2023-01-01T12:00:00Z'),
+      } as Partial<CanvasDocument> as CanvasDocument;
       const result = serializeCanvas(canvasWithoutCreator);
 
       expect(result.data).not.toHaveProperty('relationships');
@@ -147,9 +157,11 @@ describe('Canvas Serializer', () => {
       const jsonaResource = {
         id: 'canvas123',
         type: 'canvas',
-        roomId: 'TEST123',
-        operations: [],
-        version: 1,
+        attributes: {
+          roomId: 'TEST123',
+          operations: [],
+          version: 1,
+        },
       };
 
       const result = deserializeCanvas(jsonaResource);
@@ -248,15 +260,19 @@ describe('Canvas Serializer', () => {
       });
 
       // Verify timestamp is a valid ISO string
-      const timestamp = result.data.attributes.timestamp;
-      expect(new Date(timestamp).toISOString()).toBe(timestamp);
+      if (!Array.isArray(result.data)) {
+        const timestamp = result.data.attributes.timestamp as string;
+        expect(new Date(timestamp).toISOString()).toBe(timestamp);
+      }
     });
 
     it('should handle empty operations array', () => {
       const result = serializeCanvasOperations([]);
 
-      expect(result.data.attributes.operations).toEqual([]);
-      expect(result.data.attributes.count).toBe(0);
+      if (!Array.isArray(result.data)) {
+        expect(result.data.attributes.operations).toEqual([]);
+        expect(result.data.attributes.count).toBe(0);
+      }
     });
   });
 });

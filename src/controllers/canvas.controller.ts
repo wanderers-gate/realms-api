@@ -9,7 +9,7 @@ import {
   deserializeCanvas,
 } from '../serializers/canvas.serializer';
 import type { CanvasOperation, DrawingEvent } from '../types/canvas';
-import { logger } from '../utils/logger';
+import logger from '../utils/logger';
 
 // Get canvas state for a room
 export const getCanvas = async (req: Request, res: Response): Promise<void> => {
@@ -19,7 +19,7 @@ export const getCanvas = async (req: Request, res: Response): Promise<void> => {
     // Verify room exists and user has access
     const room = await RoomModel.findOne({ roomId, isActive: true });
     if (!room) {
-      return res.status(404).json({
+      res.status(404).json({
         errors: [
           {
             status: '404',
@@ -28,11 +28,12 @@ export const getCanvas = async (req: Request, res: Response): Promise<void> => {
           },
         ],
       });
+      return;
     }
 
     // Check if user can access this room
     if (!req.userId && !room.settings?.allowGuests) {
-      return res.status(403).json({
+      res.status(403).json({
         errors: [
           {
             status: '403',
@@ -41,6 +42,7 @@ export const getCanvas = async (req: Request, res: Response): Promise<void> => {
           },
         ],
       });
+      return;
     }
 
     // Get or create canvas for this room
@@ -79,7 +81,7 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
     const userId = req.userId;
 
     if (!userId) {
-      return res.status(401).json({
+      res.status(401).json({
         errors: [
           {
             status: '401',
@@ -88,12 +90,13 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
           },
         ],
       });
+      return;
     }
 
     // Verify room exists and user has access
     const room = await RoomModel.findOne({ roomId, isActive: true });
     if (!room) {
-      return res.status(404).json({
+      res.status(404).json({
         errors: [
           {
             status: '404',
@@ -102,6 +105,7 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
           },
         ],
       });
+      return;
     }
 
     // Deserialize the drawing operation
@@ -112,7 +116,7 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
       !Array.isArray(operationData.operations) ||
       operationData.operations.length === 0
     ) {
-      return res.status(400).json({
+      res.status(400).json({
         errors: [
           {
             status: '400',
@@ -121,6 +125,7 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
           },
         ],
       });
+      return;
     }
 
     // Get or create canvas
@@ -160,28 +165,29 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
   }
 };
 
-// Clear the canvas (remove all operations)
-export const clearCanvas = async (req: Request, res: Response): Promise<void> => {
+// Delete canvas operations by IDs
+export const deleteCanvasOperations = async (req: Request, res: Response): Promise<void> => {
   try {
     const { roomId } = req.params;
     const userId = req.userId;
 
     if (!userId) {
-      return res.status(401).json({
+      res.status(401).json({
         errors: [
           {
             status: '401',
             title: 'Unauthorized',
-            detail: 'User must be authenticated to clear canvas',
+            detail: 'User must be authenticated to delete operations',
           },
         ],
       });
+      return;
     }
 
-    // Verify room exists and user is the creator
+    // Verify room exists and user has access
     const room = await RoomModel.findOne({ roomId, isActive: true });
     if (!room) {
-      return res.status(404).json({
+      res.status(404).json({
         errors: [
           {
             status: '404',
@@ -190,37 +196,64 @@ export const clearCanvas = async (req: Request, res: Response): Promise<void> =>
           },
         ],
       });
+      return;
     }
 
-    // Only room creator can clear the canvas
-    if (room.createdBy.toString() !== userId) {
-      return res.status(403).json({
+    // Get operation IDs from request body
+    const { operationIds } = req.body;
+    
+    if (!operationIds || !Array.isArray(operationIds) || operationIds.length === 0) {
+      res.status(400).json({
         errors: [
           {
-            status: '403',
-            title: 'Forbidden',
-            detail: 'Only the room creator can clear the canvas',
+            status: '400',
+            title: 'Bad Request',
+            detail: 'Operation IDs array is required',
           },
         ],
       });
+      return;
     }
 
-    // Clear the canvas
+    // Find and update canvas
     const canvas = await CanvasModel.findOne({ roomId });
-    if (canvas) {
-      canvas.operations = [];
-      await canvas.save();
+    if (!canvas) {
+      res.status(404).json({
+        errors: [
+          {
+            status: '404',
+            title: 'Canvas Not Found',
+            detail: 'Canvas not found for this room',
+          },
+        ],
+      });
+      return;
     }
 
-    res.status(204).json({});
+    // Filter out operations with the specified IDs
+    const initialCount = canvas.operations.length;
+    canvas.operations = canvas.operations.filter(op => !operationIds.includes(op.id));
+    const deletedCount = initialCount - canvas.operations.length;
+
+    // Save the updated canvas
+    await canvas.save();
+
+    logger.info(`[CANVAS] Deleted ${deletedCount} operations from room ${roomId} by user ${userId}`);
+
+    res.status(200).json({
+      data: {
+        deletedCount,
+        remainingOperations: canvas.operations.length,
+      },
+    });
   } catch (error) {
-    logger.error('Error clearing canvas:', error);
+    logger.error('Error deleting canvas operations:', error);
     res.status(500).json({
       errors: [
         {
           status: '500',
           title: 'Internal Server Error',
-          detail: 'Failed to clear canvas',
+          detail: 'Failed to delete canvas operations',
         },
       ],
     });
