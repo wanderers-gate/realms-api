@@ -1,4 +1,4 @@
-import { Schema, model, type Document, type Types } from 'mongoose';
+import { type Document, Schema, type Types, model } from 'mongoose';
 import type { CanvasOperation } from '../types/canvas';
 
 // Maximum number of operations to store per room

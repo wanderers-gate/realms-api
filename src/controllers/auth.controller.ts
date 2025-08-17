@@ -10,44 +10,38 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     // Validate required fields
     if (!email || !password || !firstName || !lastName) {
-      res.status(400).json({
-        errors: [
-          {
-            status: '400',
-            title: 'Bad Request',
-            detail: 'Email, password, firstName, and lastName are required',
-          },
-        ],
-      });
+      res.jsonApiError(400, [
+        {
+          status: '400',
+          title: 'Bad Request',
+          detail: 'Email, password, firstName, and lastName are required',
+        },
+      ]);
       return;
     }
 
     // Validate displayName if provided
     if (displayName && (displayName.trim().length === 0 || displayName.trim().length > 50)) {
-      res.status(400).json({
-        errors: [
-          {
-            status: '400',
-            title: 'Bad Request',
-            detail: 'Display name must be between 1 and 50 characters',
-          },
-        ],
-      });
+      res.jsonApiError(400, [
+        {
+          status: '400',
+          title: 'Bad Request',
+          detail: 'Display name must be between 1 and 50 characters',
+        },
+      ]);
       return;
     }
 
     // Check if user already exists
     const existingUser = await UserModel.findOne({ email });
     if (existingUser) {
-      res.status(400).json({
-        errors: [
-          {
-            status: '400',
-            title: 'Bad Request',
-            detail: 'User already exists',
-          },
-        ],
-      });
+      res.jsonApiError(400, [
+        {
+          status: '400',
+          title: 'Bad Request',
+          detail: 'User already exists',
+        },
+      ]);
       return;
     }
 
@@ -75,15 +69,13 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json(serializeUser(user));
   } catch (_error) {
-    res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'An error occurred while registering the user',
-        },
-      ],
-    });
+    res.jsonApiError(500, [
+      {
+        status: '500',
+        title: 'Internal Server Error',
+        detail: 'An error occurred while registering the user',
+      },
+    ]);
   }
 };
 

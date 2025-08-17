@@ -1,12 +1,12 @@
 import { describe, expect, it } from '@jest/globals';
 import { Types } from 'mongoose';
+import type { CanvasDocument } from '../../models/canvas-model';
+import type { CanvasOperation } from '../../types/canvas';
 import {
   deserializeCanvas,
   serializeCanvas,
   serializeCanvasOperations,
 } from '../canvas.serializer';
-import type { CanvasDocument } from '../../models/canvas-model';
-import type { CanvasOperation } from '../../types/canvas';
 
 describe('Canvas Serializer', () => {
   const mockUserId = new Types.ObjectId();

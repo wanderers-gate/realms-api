@@ -1,14 +1,16 @@
-import { Server } from 'socket.io';
 import { createServer } from 'node:http';
-import { io as Client } from 'socket.io-client';
-import mongoose from 'mongoose';
+import type { AddressInfo } from 'node:net';
 import { MongoMemoryServer } from 'mongodb-memory-server';
-import config from '../config/config';
-import connectDB from '../config/database';
+import mongoose from 'mongoose';
+import { Server } from 'socket.io';
+import type { Socket } from 'socket.io';
+import { io as Client } from 'socket.io-client';
 import app from '../index';
 import { CanvasModel } from '../models/canvas-model';
 import { RoomModel } from '../models/room-model';
+import type { RoomDocument } from '../models/room-model';
 import { UserModel } from '../models/user-model';
+import type { UserDocument } from '../models/user-model';
 import type { DrawingEvent } from '../types/canvas';
 
 describe('Canvas Socket Events', () => {
@@ -17,8 +19,8 @@ describe('Canvas Socket Events', () => {
   let io: Server;
   let clientSocket: ReturnType<typeof Client>;
   let clientSocket2: ReturnType<typeof Client>;
-  let testUser: any;
-  let testRoom: any;
+  let testUser: UserDocument;
+  let testRoom: RoomDocument;
 
   // Increase timeout for socket tests
   jest.setTimeout(30000);
@@ -58,7 +60,7 @@ describe('Canvas Socket Events', () => {
 
     // Import and set up socket handlers (this would normally be done in server.ts)
     // For testing, we'll manually set up the handlers
-    io.on('connection', (socket: any) => {
+    io.on('connection', (socket: Socket) => {
       socket.username = 'testuser';
 
       // Handle room joining
@@ -81,7 +83,7 @@ describe('Canvas Socket Events', () => {
           }
 
           const operation = {
-            id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
             type: drawingEvent.type,
             tool: drawingEvent.tool,
             points: drawingEvent.points,
@@ -107,7 +109,7 @@ describe('Canvas Socket Events', () => {
             const existingCanvas = await CanvasModel.findOne({ roomId: drawingEvent.roomId });
             if (existingCanvas) {
               const operation = {
-                id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
                 type: drawingEvent.type,
                 tool: drawingEvent.tool,
                 points: drawingEvent.points,
@@ -181,7 +183,7 @@ describe('Canvas Socket Events', () => {
     await CanvasModel.deleteMany({});
 
     // Connect client sockets
-    const port = (httpServer.address() as any).port;
+    const port = (httpServer.address() as AddressInfo).port;
     clientSocket = Client(`http://localhost:${port}`, {
       timeout: 5000,
       forceNew: true,
@@ -229,7 +231,7 @@ describe('Canvas Socket Events', () => {
         size: 2,
       };
 
-      const receivedEvents: any[] = [];
+      const receivedEvents: (DrawingEvent & { operationId: string; timestamp: Date })[] = [];
       clientSocket2.on('canvas-draw', (event) => {
         receivedEvents.push(event);
       });
@@ -331,7 +333,7 @@ describe('Canvas Socket Events', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Verify canvas was created with operation
-      let canvas = await CanvasModel.findOne({ roomId: testRoom._id.toString() });
+      const canvas = await CanvasModel.findOne({ roomId: testRoom._id.toString() });
       expect(canvas?.operations).toHaveLength(1);
 
       const receivedEvents: string[] = [];
@@ -402,7 +404,7 @@ describe('Canvas Socket Events', () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Verify canvas has 2 operations
-      let canvas = await CanvasModel.findOne({ roomId: testRoom._id.toString() });
+      const canvas = await CanvasModel.findOne({ roomId: testRoom._id.toString() });
       expect(canvas?.operations).toHaveLength(2);
 
       const receivedEvents: string[] = [];

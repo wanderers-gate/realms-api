@@ -1,7 +1,11 @@
 import { Router } from 'express';
+import {
+  addCanvasOperation,
+  deleteCanvasOperations,
+  getCanvas,
+} from '../controllers/canvas.controller';
 import { authenticateOptionalJwt } from '../middleware/authenticate';
 import { jsonApiMiddleware } from '../middleware/json-api';
-import { getCanvas, addCanvasOperation, deleteCanvasOperations } from '../controllers/canvas.controller';
 
 const router = Router();
 

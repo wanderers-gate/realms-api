@@ -38,6 +38,7 @@ const createMockResponse = () => {
     cookie: jest.fn(),
     clearCookie: jest.fn(),
     send: jest.fn(),
+    jsonApiError: jest.fn(),
   };
   return res as Response;
 };
@@ -112,16 +113,13 @@ describe('Auth Controller', () => {
       await register(mockRequest as Request, mockResponse);
 
       expect(UserModel.findOne).toHaveBeenCalledWith({ email: 'test@example.com' });
-      expect(mockResponse.status).toHaveBeenCalledWith(400);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '400',
-            title: 'Bad Request',
-            detail: 'User already exists',
-          },
-        ],
-      });
+      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(400, [
+        {
+          status: '400',
+          title: 'Bad Request',
+          detail: 'User already exists',
+        },
+      ]);
     });
   });
 

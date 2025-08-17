@@ -1,3 +1,4 @@
+import type { Socket as SocketIOSocket } from 'socket.io';
 import type { UserDocument } from '../models/user-model';
 import type { JsonApiError } from './json-api';
 
@@ -9,5 +10,11 @@ declare global {
     interface Request {
       user?: UserDocument;
     }
+  }
+}
+
+declare module 'socket.io' {
+  interface Socket {
+    username?: string;
   }
 }

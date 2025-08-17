@@ -2,8 +2,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Types } from 'mongoose';
 import mongoose from 'mongoose';
-import { CanvasModel, MAX_CANVAS_OPERATIONS } from '../canvas-model';
 import type { CanvasOperation } from '../../types/canvas';
+import { CanvasModel, MAX_CANVAS_OPERATIONS } from '../canvas-model';
 
 describe('Canvas Model', () => {
   let mongoServer: MongoMemoryServer;

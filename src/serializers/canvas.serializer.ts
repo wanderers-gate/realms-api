@@ -1,7 +1,7 @@
-import type { CanvasDocument } from '../models/canvas-model';
-import type { JsonApiResourceObject, JsonApiResponse } from '../types/json-api';
-import type { CanvasOperation } from '../types/canvas';
 import type { Types } from 'mongoose';
+import type { CanvasDocument } from '../models/canvas-model';
+import type { CanvasOperation } from '../types/canvas';
+import type { JsonApiResourceObject, JsonApiResponse } from '../types/json-api';
 
 const type = 'canvas';
 const attributes = [

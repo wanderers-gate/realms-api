@@ -4,16 +4,38 @@ import { Server, type Socket } from 'socket.io';
 import config from './config/config';
 import connectDB from './config/database';
 import app from './index';
-import { chatService } from './services/chat.service';
 import { CanvasModel } from './models/canvas-model';
 import { RoomModel } from './models/room-model';
+import { chatService } from './services/chat.service';
+import type { CanvasOperation, DrawingEvent } from './types/canvas';
 import logger from './utils/logger';
-import type { DrawingEvent, CanvasOperation } from './types/canvas';
 
-// Extend Socket interface to include username
-interface AuthenticatedSocket extends Socket {
-  username?: string;
-}
+// Helper functions
+const getSocketUsername = (socket: Socket): string => socket.username || 'Unknown User';
+
+const createChatMessage = (
+  socket: Socket,
+  message: string,
+  id: string | number = Date.now(),
+  timestamp: Date = new Date()
+) => ({
+  id: id.toString(),
+  userId: socket.id,
+  username: getSocketUsername(socket),
+  message,
+  timestamp,
+});
+
+const createCanvasOperation = (drawingEvent: DrawingEvent): CanvasOperation => ({
+  id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+  type: drawingEvent.type,
+  tool: drawingEvent.tool,
+  points: drawingEvent.points,
+  color: drawingEvent.color,
+  size: drawingEvent.size,
+  timestamp: new Date(),
+  userId: drawingEvent.userId,
+});
 
 // Batched canvas saves to prevent infinite loops
 const pendingCanvasOperations: Map<string, CanvasOperation[]> = new Map();
@@ -39,22 +61,23 @@ async function savePendingOperations(roomId: string) {
       { new: true }
     );
 
-                    if (result) {
-                  logger.info(`[CANVAS] Batch saved ${operations.length} operations for room ${roomId}`);
-                } else {
-                  // Canvas doesn't exist, create it with all pending operations
-                  const newCanvas = new CanvasModel({
-                    roomId,
-                    operations,
-                    createdBy: room.createdBy
-                  });
-                  await newCanvas.save();
-                  logger.info(`[CANVAS] Created new canvas with ${operations.length} operations for room ${roomId}`);
-                }
+    if (result) {
+      logger.info(`[CANVAS] Batch saved ${operations.length} operations for room ${roomId}`);
+    } else {
+      // Canvas doesn't exist, create it with all pending operations
+      const newCanvas = new CanvasModel({
+        roomId,
+        operations,
+        createdBy: room.createdBy,
+      });
+      await newCanvas.save();
+      logger.info(
+        `[CANVAS] Created new canvas with ${operations.length} operations for room ${roomId}`
+      );
+    }
 
     // Clear pending operations after successful save
     pendingCanvasOperations.delete(roomId);
-    
   } catch (error) {
     logger.error(`[CANVAS] Error in batch save for room ${roomId}:`, error);
     // Keep the operations for retry, but limit the size to prevent memory issues
@@ -62,7 +85,9 @@ async function savePendingOperations(roomId: string) {
     if (currentOps.length > 1000) {
       // If too many operations failed, keep only the last 100
       pendingCanvasOperations.set(roomId, currentOps.slice(-100));
-      logger.warn(`[CANVAS] Trimmed pending operations for room ${roomId} due to repeated failures`);
+      logger.warn(
+        `[CANVAS] Trimmed pending operations for room ${roomId} due to repeated failures`
+      );
     }
   }
 }
@@ -71,7 +96,7 @@ async function savePendingOperations(roomId: string) {
 async function loadExistingCanvas(roomId: string) {
   try {
     const canvas = await CanvasModel.findOne({ roomId });
-    
+
     if (canvas && canvas.operations.length > 0) {
       logger.info(`[CANVAS] Loaded ${canvas.operations.length} operations for room ${roomId}`);
       return canvas.operations;
@@ -105,7 +130,7 @@ const userRooms = new Map(); // Track which room each user is in
 let server: ReturnType<typeof httpServer.listen>;
 
 // Socket.IO connection handling
-io.on('connection', (socket: AuthenticatedSocket) => {
+io.on('connection', (socket: Socket) => {
   logger.info(`User connected: ${socket.id}`);
 
   // Join a room
@@ -136,54 +161,54 @@ io.on('connection', (socket: AuthenticatedSocket) => {
 
     // Add user to room
     const room = rooms.get(roomId);
-    if (room) {
-      room.users.set(socket.id, {
-        id: socket.id,
-        username: username,
-        joinedAt: new Date(),
-      });
+    if (!room) {
+      logger.error(`[ROOM] Room ${roomId} not found after initialization`);
+      return;
     }
+
+    room.users.set(socket.id, {
+      id: socket.id,
+      username: username,
+      joinedAt: new Date(),
+    });
 
     logger.info(`User ${username} (${socket.id}) joined room: ${roomId}`);
 
     // Load recent messages from database
-    const currentRoom = rooms.get(roomId);
-    if (currentRoom) {
-      try {
-        const recentMessages = await chatService.getRecentMessages(roomId, 50);
-        currentRoom.messages = recentMessages.map((msg) => ({
-          id: msg._id.toString(),
-          userId: msg.userId,
-          username: msg.username,
-          message: msg.message,
-          timestamp: msg.timestamp,
-        }));
-        logger.info(`[CHAT] Loaded ${recentMessages.length} messages for room ${roomId}`);
-      } catch (error) {
-        logger.error(`[CHAT] Error loading messages for room ${roomId}:`, error);
-        currentRoom.messages = [];
-      }
-
-      // Load existing canvas data
-      const existingCanvas = await loadExistingCanvas(roomId);
-
-      // Send room info to joining user
-      socket.emit('room-joined', {
-        roomId: roomId,
-        users: Array.from(currentRoom.users.values()),
-        recentMessages: currentRoom.messages,
-        canvasOperations: existingCanvas, // Include existing canvas data
-      });
-
-      // Notify other users in room
-      socket.to(roomId).emit('user-joined', {
-        userId: socket.id,
-        username: username,
-      });
-
-      // Send updated user list to all in room
-      updateRoomUserList(roomId);
+    try {
+      const recentMessages = await chatService.getRecentMessages(roomId, 50);
+      room.messages = recentMessages.map((msg) => ({
+        id: msg._id.toString(),
+        userId: msg.userId,
+        username: msg.username,
+        message: msg.message,
+        timestamp: msg.timestamp,
+      }));
+      logger.info(`[CHAT] Loaded ${recentMessages.length} messages for room ${roomId}`);
+    } catch (error) {
+      logger.error(`[CHAT] Error loading messages for room ${roomId}:`, error);
+      room.messages = [];
     }
+
+    // Load existing canvas data
+    const existingCanvas = await loadExistingCanvas(roomId);
+
+    // Send room info to joining user
+    socket.emit('room-joined', {
+      roomId: roomId,
+      users: Array.from(room.users.values()),
+      recentMessages: room.messages,
+      canvasOperations: existingCanvas, // Include existing canvas data
+    });
+
+    // Notify other users in room
+    socket.to(roomId).emit('user-joined', {
+      userId: socket.id,
+      username: username,
+    });
+
+    // Send updated user list to all in room
+    updateRoomUserList(roomId);
   });
 
   // Handle chat messages
@@ -201,17 +226,16 @@ io.on('connection', (socket: AuthenticatedSocket) => {
       const savedMessage = await chatService.saveMessage(
         roomId,
         socket.id,
-        socket.username || 'Unknown User',
+        getSocketUsername(socket),
         message
       );
 
-      const chatMessage = {
-        id: savedMessage._id.toString(),
-        userId: socket.id,
-        username: socket.username || 'Unknown User',
-        message: message,
-        timestamp: savedMessage.timestamp,
-      };
+      const chatMessage = createChatMessage(
+        socket,
+        message,
+        savedMessage._id.toString(),
+        savedMessage.timestamp
+      );
 
       logger.info('[CHAT] Saved message to database:', chatMessage);
 
@@ -244,32 +268,16 @@ io.on('connection', (socket: AuthenticatedSocket) => {
     } catch (error) {
       logger.error('[CHAT] Error saving message to database:', error);
       // Still broadcast the message even if database save fails
-      const chatMessage = {
-        id: Date.now(),
-        userId: socket.id,
-        username: socket.username || 'Unknown User',
-        message: message,
-        timestamp: new Date(),
-      };
+      const chatMessage = createChatMessage(socket, message);
 
       io.to(roomId).emit('new-message', chatMessage);
     }
   });
 
-      // Handle canvas drawing events
-    socket.on('canvas-draw', async (drawingEvent: DrawingEvent) => {
-
+  // Handle canvas drawing events
+  socket.on('canvas-draw', async (drawingEvent: DrawingEvent) => {
     // Broadcast immediately for real-time experience
-    const operation: CanvasOperation = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      type: drawingEvent.type,
-      tool: drawingEvent.tool,
-      points: drawingEvent.points,
-      color: drawingEvent.color,
-      size: drawingEvent.size,
-      timestamp: new Date(),
-      userId: drawingEvent.userId,
-    };
+    const operation = createCanvasOperation(drawingEvent);
 
     // Broadcast to all users in the room (except sender) - FAST!
     const broadcastEvent = {
@@ -296,10 +304,9 @@ io.on('connection', (socket: AuthenticatedSocket) => {
       canvasSaveTimer.delete(drawingEvent.roomId);
       savePendingOperations(drawingEvent.roomId);
     }, 2000);
-    
+
     canvasSaveTimer.set(drawingEvent.roomId, timer);
   });
-
 
   // Handle canvas undo events
   socket.on('canvas-undo', async (roomId: string) => {
@@ -322,24 +329,26 @@ io.on('connection', (socket: AuthenticatedSocket) => {
 
   // Handle canvas operation deletion events
   socket.on('canvas-delete', async (data: { roomId: string; operationIds: string[] }) => {
-    logger.info(`[CANVAS] Received delete event from ${socket.id} in room ${data.roomId} for ${data.operationIds.length} operations`);
+    logger.info(
+      `[CANVAS] Received delete event from ${socket.id} in room ${data.roomId} for ${data.operationIds.length} operations`
+    );
 
     try {
       const canvas = await CanvasModel.findOne({ roomId: data.roomId });
       if (canvas) {
         // Filter out operations with the specified IDs
         const initialCount = canvas.operations.length;
-        canvas.operations = canvas.operations.filter(op => !data.operationIds.includes(op.id));
+        canvas.operations = canvas.operations.filter((op) => !data.operationIds.includes(op.id));
         const deletedCount = initialCount - canvas.operations.length;
-        
+
         await canvas.save();
         logger.info(`[CANVAS] Deleted ${deletedCount} operations for room ${data.roomId}`);
-        
+
         // Broadcast deletion event to all users in the room (except sender)
         socket.to(data.roomId).emit('canvas-delete', {
           roomId: data.roomId,
           operationIds: data.operationIds,
-          deletedCount
+          deletedCount,
         });
       }
     } catch (error) {

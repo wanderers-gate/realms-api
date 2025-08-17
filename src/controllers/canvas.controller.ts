@@ -4,9 +4,9 @@ import { CanvasModel } from '../models/canvas-model';
 import { RoomModel } from '../models/room-model';
 import { UserModel } from '../models/user-model';
 import {
+  deserializeCanvas,
   serializeCanvas,
   serializeCanvasOperations,
-  deserializeCanvas,
 } from '../serializers/canvas.serializer';
 import type { CanvasOperation, DrawingEvent } from '../types/canvas';
 import logger from '../utils/logger';
@@ -201,7 +201,7 @@ export const deleteCanvasOperations = async (req: Request, res: Response): Promi
 
     // Get operation IDs from request body
     const { operationIds } = req.body;
-    
+
     if (!operationIds || !Array.isArray(operationIds) || operationIds.length === 0) {
       res.status(400).json({
         errors: [
@@ -232,13 +232,15 @@ export const deleteCanvasOperations = async (req: Request, res: Response): Promi
 
     // Filter out operations with the specified IDs
     const initialCount = canvas.operations.length;
-    canvas.operations = canvas.operations.filter(op => !operationIds.includes(op.id));
+    canvas.operations = canvas.operations.filter((op) => !operationIds.includes(op.id));
     const deletedCount = initialCount - canvas.operations.length;
 
     // Save the updated canvas
     await canvas.save();
 
-    logger.info(`[CANVAS] Deleted ${deletedCount} operations from room ${roomId} by user ${userId}`);
+    logger.info(
+      `[CANVAS] Deleted ${deletedCount} operations from room ${roomId} by user ${userId}`
+    );
 
     res.status(200).json({
       data: {

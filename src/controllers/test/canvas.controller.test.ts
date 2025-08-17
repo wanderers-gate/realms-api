@@ -349,5 +349,4 @@ describe('Canvas Controller', () => {
       });
     });
   });
-
 });
