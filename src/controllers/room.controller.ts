@@ -2,7 +2,11 @@ import type { Request, Response } from 'express';
 import type { Types } from 'mongoose';
 import { type Room, RoomModel } from '../models/room-model';
 import { UserModel } from '../models/user-model';
-import { deserializeRoom, serializeRoom, serializeRoomWithIncludes } from '../serializers/room.serializer';
+import {
+  deserializeRoom,
+  serializeRoom,
+  serializeRoomWithIncludes,
+} from '../serializers/room.serializer';
 import type { JsonApiResourceObject } from '../types/json-api';
 
 // Type for populated user data
@@ -35,7 +39,7 @@ export const createRoom = async (req: Request, res: Response) => {
       // Already processed by middleware
       attributes = req.body;
     }
-    
+
     const jsonApiResource = {
       type: 'room',
       id: '', // Will be ignored for creation
@@ -258,7 +262,7 @@ export const updateRoom = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
     const userId = req.userId;
-    
+
     // Handle the case where middleware might not have processed the request yet
     let attributes: Record<string, unknown>;
     if (req.body.data?.attributes) {
@@ -268,7 +272,7 @@ export const updateRoom = async (req: Request, res: Response) => {
       // Already processed by middleware
       attributes = req.body;
     }
-    
+
     const jsonApiResource = {
       type: 'room',
       id: '', // Will be ignored for updates

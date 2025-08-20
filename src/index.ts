@@ -5,6 +5,7 @@ import { authenticate } from './middleware/auth.middleware';
 import { jsonApiMiddleware } from './middleware/json-api';
 import authProtectedRouter from './routes/authProtectedRouter';
 import authRouter from './routes/authRouter';
+import canvasRouter from './routes/canvasRouter';
 import roomRouter from './routes/roomRouter';
 import userRouter from './routes/userRouter';
 
@@ -59,6 +60,7 @@ app.use(jsonApiMiddleware);
 // Routes that don't need authentication
 app.use('/api/auth', authRouter);
 app.use('/api/rooms', roomRouter); // Room listing and viewing are public
+app.use('/api/canvas', canvasRouter); // Canvas viewing is public (if room allows guests)
 
 // Routes that require authentication
 app.use(authenticate);
