@@ -26,8 +26,8 @@ const createChatMessage = (
   timestamp,
 });
 
-const createCanvasOperation = (drawingEvent: DrawingEvent): CanvasOperation => ({
-  id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+const createCanvasOperation = (drawingEvent: DrawingEvent & { id?: string }): CanvasOperation => ({
+  id: drawingEvent.id || `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
   type: drawingEvent.type,
   tool: drawingEvent.tool,
   points: drawingEvent.points,
@@ -275,7 +275,7 @@ io.on('connection', (socket: Socket) => {
   });
 
   // Handle canvas drawing events
-  socket.on('canvas-draw', async (drawingEvent: DrawingEvent) => {
+  socket.on('canvas-draw', async (drawingEvent: DrawingEvent & { id?: string }) => {
     // Broadcast immediately for real-time experience
     const operation = createCanvasOperation(drawingEvent);
 
@@ -288,24 +288,27 @@ io.on('connection', (socket: Socket) => {
 
     socket.to(drawingEvent.roomId).emit('canvas-draw', broadcastEvent);
 
-    // Add operation to pending batch for this room
-    const existingOps = pendingCanvasOperations.get(drawingEvent.roomId) || [];
-    existingOps.push(operation);
-    pendingCanvasOperations.set(drawingEvent.roomId, existingOps);
+    // Only save operations that have an ID (completion events, not real-time pen segments)
+    if (drawingEvent.id) {
+      // Add operation to pending batch for this room
+      const existingOps = pendingCanvasOperations.get(drawingEvent.roomId) || [];
+      existingOps.push(operation);
+      pendingCanvasOperations.set(drawingEvent.roomId, existingOps);
 
-    // Clear existing timer for this room
-    const existingTimer = canvasSaveTimer.get(drawingEvent.roomId);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
+      // Clear existing timer for this room
+      const existingTimer = canvasSaveTimer.get(drawingEvent.roomId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+
+      // Set a new timer to save in 2 seconds (batching rapid operations)
+      const timer = setTimeout(() => {
+        canvasSaveTimer.delete(drawingEvent.roomId);
+        savePendingOperations(drawingEvent.roomId);
+      }, 2000);
+
+      canvasSaveTimer.set(drawingEvent.roomId, timer);
     }
-
-    // Set a new timer to save in 2 seconds (batching rapid operations)
-    const timer = setTimeout(() => {
-      canvasSaveTimer.delete(drawingEvent.roomId);
-      savePendingOperations(drawingEvent.roomId);
-    }, 2000);
-
-    canvasSaveTimer.set(drawingEvent.roomId, timer);
   });
 
   // Handle canvas undo events
@@ -334,6 +337,9 @@ io.on('connection', (socket: Socket) => {
     );
 
     try {
+      // First, save any pending operations for this room to ensure they're in the database
+      await savePendingOperations(data.roomId);
+
       const canvas = await CanvasModel.findOne({ roomId: data.roomId });
       if (canvas) {
         // Filter out operations with the specified IDs

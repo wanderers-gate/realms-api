@@ -33,7 +33,7 @@ const CanvasOperationSchema = new Schema(
     tool: {
       type: String,
       required: true,
-      enum: ['pen', 'eraser'],
+      enum: ['pen', 'eraser', 'rectangle', 'circle', 'line', 'arrow', 'cone', 'select'],
     },
     points: [PointSchema],
     color: { type: String, required: true },
@@ -83,8 +83,7 @@ CanvasSchema.pre('save', function () {
   }
 });
 
-// Index for efficient room lookups
-CanvasSchema.index({ roomId: 1 });
+// Index for efficient room lookups (roomId index already created by unique: true)
 CanvasSchema.index({ lastModified: -1 });
 
 export const CanvasModel = model<CanvasDocument>('Canvas', CanvasSchema);
