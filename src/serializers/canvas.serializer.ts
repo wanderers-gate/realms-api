@@ -1,4 +1,4 @@
-import type { Types } from 'mongoose';
+import { Types } from 'mongoose';
 import type { CanvasDocument } from '../models/canvas-model';
 import type { CanvasOperation } from '../types/canvas';
 import type { JsonApiResourceObject, JsonApiResponse } from '../types/json-api';
@@ -58,7 +58,7 @@ export const deserializeCanvas = (resource: JsonApiResourceObject): Partial<Canv
   const result: Partial<CanvasDocument> = {};
 
   if (resource.id) {
-    result._id = resource.id as string;
+    result._id = new Types.ObjectId(resource.id);
   }
 
   // Handle data from resource or resource.attributes

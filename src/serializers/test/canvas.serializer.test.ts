@@ -10,9 +10,10 @@ import {
 
 describe('Canvas Serializer', () => {
   const mockUserId = new Types.ObjectId();
+  const mockCanvasId = new Types.ObjectId();
 
   const mockCanvasDoc: Partial<CanvasDocument> = {
-    _id: 'canvas123',
+    _id: mockCanvasId,
     roomId: 'TEST123',
     operations: [
       {
@@ -39,7 +40,7 @@ describe('Canvas Serializer', () => {
 
       expect(result).toEqual({
         data: {
-          id: 'canvas123',
+          id: mockCanvasId.toString(),
           type: 'canvas',
           attributes: {
             roomId: 'TEST123',
@@ -86,7 +87,7 @@ describe('Canvas Serializer', () => {
 
     it('should handle canvas without relationships', () => {
       const canvasWithoutCreator = {
-        _id: 'canvas123',
+        _id: mockCanvasId,
         roomId: 'TEST123',
         operations: [],
         lastModified: new Date('2023-01-01T12:00:00Z'),
@@ -103,7 +104,7 @@ describe('Canvas Serializer', () => {
   describe('deserializeCanvas', () => {
     it('should deserialize a JSON:API resource object', () => {
       const jsonApiResource = {
-        id: 'canvas123',
+        id: mockCanvasId.toString(),
         type: 'canvas',
         attributes: {
           roomId: 'TEST123',
@@ -134,7 +135,7 @@ describe('Canvas Serializer', () => {
       const result = deserializeCanvas(jsonApiResource);
 
       expect(result).toEqual({
-        _id: 'canvas123',
+        _id: mockCanvasId,
         roomId: 'TEST123',
         operations: [
           {
@@ -155,7 +156,7 @@ describe('Canvas Serializer', () => {
 
     it('should handle resource without attributes (jsona format)', () => {
       const jsonaResource = {
-        id: 'canvas123',
+        id: mockCanvasId.toString(),
         type: 'canvas',
         attributes: {
           roomId: 'TEST123',
@@ -167,7 +168,7 @@ describe('Canvas Serializer', () => {
       const result = deserializeCanvas(jsonaResource);
 
       expect(result).toEqual({
-        _id: 'canvas123',
+        _id: mockCanvasId,
         roomId: 'TEST123',
         operations: [],
         version: 1,
@@ -176,7 +177,7 @@ describe('Canvas Serializer', () => {
 
     it('should handle resource without relationships', () => {
       const resourceWithoutRelationships = {
-        id: 'canvas123',
+        id: mockCanvasId.toString(),
         type: 'canvas',
         attributes: {
           roomId: 'TEST123',
@@ -188,7 +189,7 @@ describe('Canvas Serializer', () => {
       const result = deserializeCanvas(resourceWithoutRelationships);
 
       expect(result).toEqual({
-        _id: 'canvas123',
+        _id: mockCanvasId,
         roomId: 'TEST123',
         operations: [],
         version: 1,
@@ -198,7 +199,7 @@ describe('Canvas Serializer', () => {
 
     it('should handle array relationships correctly', () => {
       const resourceWithArrayRelationship = {
-        id: 'canvas123',
+        id: mockCanvasId.toString(),
         type: 'canvas',
         attributes: {
           roomId: 'TEST123',
