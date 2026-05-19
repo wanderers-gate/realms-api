@@ -4,7 +4,7 @@ import { UserModel } from '../../models/user-model';
 import type { UserDocument } from '../../models/user-model';
 import { serializeUser } from '../../serializers/user.serializer';
 import { generateToken } from '../../utils/jwt';
-import { login, logout, register } from '../auth.controller';
+import { authCheck, getCurrentUser, login, logout, register } from '../auth.controller';
 
 // Mock dependencies
 jest.mock('../../models/user-model');
@@ -144,24 +144,26 @@ describe('Auth Controller', () => {
       expect(mockResponse.send).toHaveBeenCalled();
     });
 
-    it('should not login with invalid credentials', async () => {
+    it('should return 401 when user is not found', async () => {
+      (UserModel.findOne as jest.Mock).mockResolvedValue(null);
+
+      await login(mockRequest as Request, mockResponse);
+
+      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(401, [
+        { status: '401', title: 'Unauthorized', detail: 'Invalid credentials' },
+      ]);
+    });
+
+    it('should return 401 when password is invalid', async () => {
       (UserModel.findOne as jest.Mock).mockResolvedValue(mockUser);
       mockUser.comparePassword.mockResolvedValue(false);
 
       await login(mockRequest as Request, mockResponse);
 
-      expect(UserModel.findOne).toHaveBeenCalledWith({ email: 'test@example.com' });
       expect(mockUser.comparePassword).toHaveBeenCalledWith('password');
-      expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'Invalid credentials',
-          },
-        ],
-      });
+      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(401, [
+        { status: '401', title: 'Unauthorized', detail: 'Invalid credentials' },
+      ]);
     });
   });
 
@@ -175,6 +177,66 @@ describe('Auth Controller', () => {
         sameSite: 'strict',
       });
       expect(mockResponse.status).toHaveBeenCalledWith(204);
+      expect(mockResponse.send).toHaveBeenCalled();
+    });
+  });
+
+  describe('getCurrentUser', () => {
+    it('should return user data when user is on the request', async () => {
+      const user = {
+        _id: mockUser._id,
+        email: 'test@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        displayName: 'Test User',
+      };
+      const req = { ...mockRequest, user } as unknown as Request;
+
+      await getCurrentUser(req, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        id: mockUser._id.toString(),
+        email: 'test@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        displayName: 'Test User',
+      });
+    });
+
+    it('should fall back to firstName + lastName when displayName is missing', async () => {
+      const user = {
+        _id: mockUser._id,
+        email: 'test@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        displayName: undefined,
+      };
+      const req = { ...mockRequest, user } as unknown as Request;
+
+      await getCurrentUser(req, mockResponse);
+
+      expect(mockResponse.json).toHaveBeenCalledWith(
+        expect.objectContaining({ displayName: 'Test User' })
+      );
+    });
+
+    it('should return 401 when no user is on the request', async () => {
+      const req = { ...mockRequest, user: undefined } as unknown as Request;
+
+      await getCurrentUser(req, mockResponse);
+
+      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(401, [
+        { status: '401', title: 'Unauthorized', detail: 'User not found in request' },
+      ]);
+    });
+  });
+
+  describe('authCheck', () => {
+    it('should return 200', () => {
+      authCheck(mockRequest as Request, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.send).toHaveBeenCalled();
     });
   });

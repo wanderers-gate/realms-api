@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 import { CanvasModel } from '../../models/canvas-model';
 import { RoomModel } from '../../models/room-model';
 import { UserModel } from '../../models/user-model';
-import { addCanvasOperation, getCanvas } from '../canvas.controller';
+import { addCanvasOperation, deleteCanvasOperations, getCanvas } from '../canvas.controller';
 
 // Mock the response object
 const mockResponse = () => {
@@ -319,7 +319,7 @@ describe('Canvas Controller', () => {
       expect(res.status).toHaveBeenCalledWith(404);
     });
 
-    it('should return 400 for invalid operation data', async () => {
+    it('should return 400 for missing operations key', async () => {
       const req = mockRequest(
         {
           data: {
@@ -346,6 +346,161 @@ describe('Canvas Controller', () => {
             detail: 'Invalid operation data',
           },
         ],
+      });
+    });
+  });
+
+  describe('deleteCanvasOperations', () => {
+    let testCanvas: InstanceType<typeof CanvasModel>;
+
+    beforeEach(async () => {
+      testCanvas = new CanvasModel({
+        roomId: testRoom.roomId,
+        createdBy: testUser._id,
+        operations: [
+          {
+            id: 'op-1',
+            type: 'draw',
+            tool: 'pen',
+            points: [{ x: 0, y: 0 }],
+            color: '#000000',
+            size: 2,
+            timestamp: new Date(),
+            userId: testUser._id.toString(),
+          },
+          {
+            id: 'op-2',
+            type: 'draw',
+            tool: 'pen',
+            points: [{ x: 10, y: 10 }],
+            color: '#ff0000',
+            size: 3,
+            timestamp: new Date(),
+            userId: testUser._id.toString(),
+          },
+        ],
+      });
+      await testCanvas.save();
+    });
+
+    it('should delete specified operations and return counts', async () => {
+      const req = mockRequest(
+        { operationIds: ['op-1'] },
+        { roomId: testRoom.roomId },
+        {},
+        { id: testUser._id.toString() }
+      );
+      const res = mockResponse();
+
+      await deleteCanvasOperations(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        data: { deletedCount: 1, remainingOperations: 1 },
+      });
+
+      const updated = await CanvasModel.findOne({ roomId: testRoom.roomId });
+      expect(updated?.operations).toHaveLength(1);
+      expect(updated?.operations[0].id).toBe('op-2');
+    });
+
+    it('should return 401 when not authenticated', async () => {
+      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: testRoom.roomId });
+      const res = mockResponse();
+
+      await deleteCanvasOperations(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        errors: [
+          {
+            status: '401',
+            title: 'Unauthorized',
+            detail: 'User must be authenticated to delete operations',
+          },
+        ],
+      });
+    });
+
+    it('should return 404 when room does not exist', async () => {
+      const req = mockRequest(
+        { operationIds: ['op-1'] },
+        { roomId: 'NOPE99' },
+        {},
+        { id: testUser._id.toString() }
+      );
+      const res = mockResponse();
+
+      await deleteCanvasOperations(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
+      });
+    });
+
+    it('should return 400 when operationIds is missing', async () => {
+      const req = mockRequest({}, { roomId: testRoom.roomId }, {}, { id: testUser._id.toString() });
+      const res = mockResponse();
+
+      await deleteCanvasOperations(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        errors: [
+          { status: '400', title: 'Bad Request', detail: 'Operation IDs array is required' },
+        ],
+      });
+    });
+
+    it('should return 400 when operationIds is an empty array', async () => {
+      const req = mockRequest(
+        { operationIds: [] },
+        { roomId: testRoom.roomId },
+        {},
+        { id: testUser._id.toString() }
+      );
+      const res = mockResponse();
+
+      await deleteCanvasOperations(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it('should return 404 when canvas does not exist for the room', async () => {
+      await CanvasModel.deleteMany({});
+      const req = mockRequest(
+        { operationIds: ['op-1'] },
+        { roomId: testRoom.roomId },
+        {},
+        { id: testUser._id.toString() }
+      );
+      const res = mockResponse();
+
+      await deleteCanvasOperations(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(res.json).toHaveBeenCalledWith({
+        errors: [
+          { status: '404', title: 'Canvas Not Found', detail: 'Canvas not found for this room' },
+        ],
+      });
+    });
+
+    it('should return 0 deletedCount when operationIds do not match any operations', async () => {
+      const req = mockRequest(
+        { operationIds: ['nonexistent-id'] },
+        { roomId: testRoom.roomId },
+        {},
+        { id: testUser._id.toString() }
+      );
+      const res = mockResponse();
+
+      await deleteCanvasOperations(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        data: { deletedCount: 0, remainingOperations: 2 },
       });
     });
   });

@@ -8,9 +8,16 @@ import { CanvasModel } from './models/canvas-model';
 import { RoomModel } from './models/room-model';
 import { chatService } from './services/chat.service';
 import type { CanvasOperation, DrawingEvent } from './types/canvas';
+import { verifyJwt } from './utils/jwt';
 import logger from './utils/logger';
 
-// Helper functions
+declare module 'socket.io' {
+  interface Socket {
+    username?: string;
+    authenticatedUserId?: string;
+  }
+}
+
 const getSocketUsername = (socket: Socket): string => socket.username || 'Unknown User';
 
 const createChatMessage = (
@@ -41,7 +48,6 @@ const createCanvasOperation = (drawingEvent: DrawingEvent & { id?: string }): Ca
 const pendingCanvasOperations: Map<string, CanvasOperation[]> = new Map();
 const canvasSaveTimer: Map<string, NodeJS.Timeout> = new Map();
 
-// Function to save pending operations for a room
 async function savePendingOperations(roomId: string) {
   const operations = pendingCanvasOperations.get(roomId);
   if (!operations || operations.length === 0) return;
@@ -92,7 +98,6 @@ async function savePendingOperations(roomId: string) {
   }
 }
 
-// Function to load existing canvas for a room
 async function loadExistingCanvas(roomId: string) {
   try {
     const canvas = await CanvasModel.findOne({ roomId });
@@ -108,7 +113,6 @@ async function loadExistingCanvas(roomId: string) {
   }
 }
 
-// Create HTTP server and Socket.IO instance
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
@@ -123,43 +127,39 @@ const io = new Server(httpServer, {
   },
 });
 
-// Room management
 const rooms = new Map();
-const userRooms = new Map(); // Track which room each user is in
+const userRooms = new Map();
 
 let server: ReturnType<typeof httpServer.listen>;
 
-// Socket.IO connection handling
 io.on('connection', (socket: Socket) => {
   logger.info(`User connected: ${socket.id}`);
 
-  // Join a room
+  const cookieHeader = socket.handshake.headers.cookie || '';
+  const tokenMatch = cookieHeader.match(/(?:^|;\s*)token=([^;]*)/);
+  if (tokenMatch) {
+    const decoded = verifyJwt(decodeURIComponent(tokenMatch[1]));
+    if (decoded) {
+      socket.authenticatedUserId = decoded.userId;
+    }
+  }
+
   socket.on('join-room', async (roomId: string, username: string) => {
-    // Leave previous room if any
     const previousRoom = userRooms.get(socket.id);
     if (previousRoom) {
       socket.leave(previousRoom);
       updateRoomUserList(previousRoom);
-      socket.to(previousRoom).emit('user-left', {
-        userId: socket.id,
-        username: socket.username,
-      });
+      socket.to(previousRoom).emit('user-left', { userId: socket.id, username: socket.username });
     }
 
-    // Join new room
     socket.join(roomId);
     socket.username = username;
     userRooms.set(socket.id, roomId);
 
-    // Initialize room if it doesn't exist
     if (!rooms.has(roomId)) {
-      rooms.set(roomId, {
-        users: new Map(),
-        messages: [],
-      });
+      rooms.set(roomId, { users: new Map(), messages: [] });
     }
 
-    // Add user to room
     const room = rooms.get(roomId);
     if (!room) {
       logger.error(`[ROOM] Room ${roomId} not found after initialization`);
@@ -168,13 +168,13 @@ io.on('connection', (socket: Socket) => {
 
     room.users.set(socket.id, {
       id: socket.id,
-      username: username,
+      authenticatedUserId: socket.authenticatedUserId,
+      username,
       joinedAt: new Date(),
     });
 
     logger.info(`User ${username} (${socket.id}) joined room: ${roomId}`);
 
-    // Load recent messages from database
     try {
       const recentMessages = await chatService.getRecentMessages(roomId, 50);
       room.messages = recentMessages.map((msg) => ({
@@ -184,45 +184,32 @@ io.on('connection', (socket: Socket) => {
         message: msg.message,
         timestamp: msg.timestamp,
       }));
-      logger.info(`[CHAT] Loaded ${recentMessages.length} messages for room ${roomId}`);
     } catch (error) {
       logger.error(`[CHAT] Error loading messages for room ${roomId}:`, error);
       room.messages = [];
     }
 
-    // Load existing canvas data
     const existingCanvas = await loadExistingCanvas(roomId);
+    const roomDoc = await RoomModel.findOne({ roomId });
+    const userPermissions = roomDoc?.userPermissions || [];
 
-    // Send room info to joining user
     socket.emit('room-joined', {
-      roomId: roomId,
+      roomId,
       users: Array.from(room.users.values()),
       recentMessages: room.messages,
-      canvasOperations: existingCanvas, // Include existing canvas data
+      canvasOperations: existingCanvas,
+      userPermissions,
     });
 
-    // Notify other users in room
-    socket.to(roomId).emit('user-joined', {
-      userId: socket.id,
-      username: username,
-    });
-
-    // Send updated user list to all in room
+    socket.to(roomId).emit('user-joined', { userId: socket.id, username });
     updateRoomUserList(roomId);
   });
 
-  // Handle chat messages
   socket.on('send-message', async (message: string) => {
-    logger.info(`[CHAT] Received message from ${socket.id}: "${message}"`);
-
     const roomId = userRooms.get(socket.id);
-    if (!roomId) {
-      logger.warn(`[CHAT] No room found for socket ${socket.id}`);
-      return;
-    }
+    if (!roomId) return;
 
     try {
-      // Save message to database
       const savedMessage = await chatService.saveMessage(
         roomId,
         socket.id,
@@ -237,29 +224,16 @@ io.on('connection', (socket: Socket) => {
         savedMessage.timestamp
       );
 
-      logger.info('[CHAT] Saved message to database:', chatMessage);
-
-      // Store message in room (for immediate access)
       const room = rooms.get(roomId);
       if (room) {
         room.messages.push(chatMessage);
-        // Keep only last 100 messages in memory
         if (room.messages.length > 100) {
           room.messages = room.messages.slice(-100);
         }
-        logger.info(
-          `[CHAT] Stored message in room ${roomId}, total messages: ${room.messages.length}`
-        );
-      } else {
-        logger.warn(`[CHAT] Room ${roomId} not found when storing message`);
       }
 
-      // Broadcast to all users in room
-      logger.info(`[CHAT] Broadcasting message to room ${roomId}:`, chatMessage);
       io.to(roomId).emit('new-message', chatMessage);
-      logger.info('[CHAT] Message broadcast complete');
 
-      // Clean up old messages periodically (every 10 messages)
       if (room && room.messages.length % 10 === 0) {
         chatService.cleanupOldMessages(roomId, 1000).catch((error) => {
           logger.error(`[CHAT] Error cleaning up old messages for room ${roomId}:`, error);
@@ -267,17 +241,15 @@ io.on('connection', (socket: Socket) => {
       }
     } catch (error) {
       logger.error('[CHAT] Error saving message to database:', error);
-      // Still broadcast the message even if database save fails
-      const chatMessage = createChatMessage(socket, message);
-
-      io.to(roomId).emit('new-message', chatMessage);
+      // Still broadcast even if db save fails
+      io.to(roomId).emit('new-message', createChatMessage(socket, message));
     }
   });
 
-  // Handle canvas drawing events
   socket.on('canvas-draw', async (drawingEvent: DrawingEvent & { id?: string }) => {
-    // Broadcast immediately for real-time experience
-    const operation = createCanvasOperation(drawingEvent);
+    // Always use server-verified userId, not client-provided
+    const effectiveUserId = socket.authenticatedUserId || socket.id;
+    const operation = createCanvasOperation({ ...drawingEvent, userId: effectiveUserId });
 
     // Broadcast to all users in the room (except sender) - FAST!
     const broadcastEvent = {
@@ -290,18 +262,13 @@ io.on('connection', (socket: Socket) => {
 
     // Only save operations that have an ID (completion events, not real-time pen segments)
     if (drawingEvent.id) {
-      // Add operation to pending batch for this room
       const existingOps = pendingCanvasOperations.get(drawingEvent.roomId) || [];
       existingOps.push(operation);
       pendingCanvasOperations.set(drawingEvent.roomId, existingOps);
 
-      // Clear existing timer for this room
       const existingTimer = canvasSaveTimer.get(drawingEvent.roomId);
-      if (existingTimer) {
-        clearTimeout(existingTimer);
-      }
+      if (existingTimer) clearTimeout(existingTimer);
 
-      // Set a new timer to save in 2 seconds (batching rapid operations)
       const timer = setTimeout(() => {
         canvasSaveTimer.delete(drawingEvent.roomId);
         savePendingOperations(drawingEvent.roomId);
@@ -311,7 +278,6 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  // Handle canvas undo events
   socket.on('canvas-undo', async (roomId: string) => {
     logger.info(`[CANVAS] Received undo event from ${socket.id} in room ${roomId}`);
 
@@ -330,30 +296,43 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  // Handle canvas operation deletion events
   socket.on('canvas-delete', async (data: { roomId: string; operationIds: string[] }) => {
     logger.info(
       `[CANVAS] Received delete event from ${socket.id} in room ${data.roomId} for ${data.operationIds.length} operations`
     );
 
     try {
-      // First, save any pending operations for this room to ensure they're in the database
       await savePendingOperations(data.roomId);
+
+      const requesterUserId = socket.authenticatedUserId || socket.id;
+      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
+      const isRoomCreator =
+        socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+      const hasModifyPermission = roomDoc?.userPermissions.some(
+        (p) => p.userId === requesterUserId && p.canModifyDrawings
+      );
 
       const canvas = await CanvasModel.findOne({ roomId: data.roomId });
       if (canvas) {
-        // Filter out operations with the specified IDs
+        const allowedIds = new Set(
+          canvas.operations
+            .filter((op) => data.operationIds.includes(op.id))
+            .filter((op) => isRoomCreator || hasModifyPermission || op.userId === requesterUserId)
+            .map((op) => op.id)
+        );
+
+        if (allowedIds.size === 0) return;
+
         const initialCount = canvas.operations.length;
-        canvas.operations = canvas.operations.filter((op) => !data.operationIds.includes(op.id));
+        canvas.operations = canvas.operations.filter((op) => !allowedIds.has(op.id));
         const deletedCount = initialCount - canvas.operations.length;
 
         await canvas.save();
         logger.info(`[CANVAS] Deleted ${deletedCount} operations for room ${data.roomId}`);
 
-        // Broadcast deletion event to all users in the room (except sender)
         socket.to(data.roomId).emit('canvas-delete', {
           roomId: data.roomId,
-          operationIds: data.operationIds,
+          operationIds: Array.from(allowedIds),
           deletedCount,
         });
       }
@@ -362,15 +341,57 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  // Handle disconnect
+  // Handle permission updates (DM only)
+  socket.on(
+    'update-permissions',
+    async (data: { roomId: string; targetUserId: string; canModifyDrawings: boolean }) => {
+      try {
+        const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
+        if (!roomDoc) return;
+
+        const isDM =
+          socket.authenticatedUserId && roomDoc.createdBy.toString() === socket.authenticatedUserId;
+        if (!isDM) {
+          logger.warn(`[PERMISSIONS] Unauthorized permission change attempt by ${socket.id}`);
+          return;
+        }
+
+        const existingIndex = roomDoc.userPermissions.findIndex(
+          (p) => p.userId === data.targetUserId
+        );
+        if (existingIndex >= 0) {
+          roomDoc.userPermissions[existingIndex].canModifyDrawings = data.canModifyDrawings;
+        } else {
+          roomDoc.userPermissions.push({
+            userId: data.targetUserId,
+            canModifyDrawings: data.canModifyDrawings,
+          });
+        }
+        roomDoc.markModified('userPermissions');
+
+        await roomDoc.save();
+        logger.info(
+          `[PERMISSIONS] Updated permissions for ${data.targetUserId} in room ${data.roomId}`
+        );
+
+        io.to(data.roomId).emit('permissions-updated', {
+          targetUserId: data.targetUserId,
+          canModifyDrawings: data.canModifyDrawings,
+        });
+      } catch (error) {
+        logger.error(`[PERMISSIONS] Error updating permissions for room ${data.roomId}:`, error);
+      }
+    }
+  );
+
   socket.on('disconnect', () => {
     const roomId = userRooms.get(socket.id);
     if (roomId) {
+      savePendingOperations(roomId);
       const room = rooms.get(roomId);
       if (room) {
         room.users.delete(socket.id);
 
-        // Clean up empty rooms
         if (room.users.size === 0) {
           rooms.delete(roomId);
           logger.info(`Room ${roomId} deleted (empty)`);
@@ -389,7 +410,6 @@ io.on('connection', (socket: Socket) => {
     logger.info(`User disconnected: ${socket.id}`);
   });
 
-  // Function to update user list for a room
   function updateRoomUserList(roomId: string) {
     const room = rooms.get(roomId);
     if (room) {

@@ -1,13 +1,10 @@
 import type { Request, Response } from 'express';
 import type { Types } from 'mongoose';
-import { type Room, RoomModel } from '../models/room-model';
+import { type RoomDocument, RoomModel } from '../models/room-model';
 import { UserModel } from '../models/user-model';
-import {
-  deserializeRoom,
-  serializeRoom,
-  serializeRoomWithIncludes,
-} from '../serializers/room.serializer';
+import { deserializeRoom, serializeRoomWithIncludes } from '../serializers/room.serializer';
 import type { JsonApiResourceObject } from '../types/json-api';
+import logger from '../utils/logger';
 
 // Type for populated user data
 interface PopulatedUser {
@@ -27,26 +24,22 @@ interface RoomQuery {
   }>;
 }
 
+const serializeRoomWithCreator = (room: RoomDocument, creator: PopulatedUser) =>
+  serializeRoomWithIncludes(room, {
+    createdBy: {
+      id: String(creator._id),
+      type: 'user',
+      attributes: {
+        firstName: creator.firstName,
+        lastName: creator.lastName,
+        displayName: creator.displayName,
+      },
+    },
+  });
+
 // Create a new room
 export const createRoom = async (req: Request, res: Response) => {
   try {
-    // Handle the case where middleware might not have processed the request yet
-    let attributes: Record<string, unknown>;
-    if (req.body.data?.attributes) {
-      // Full JSON:API format - extract attributes
-      attributes = req.body.data.attributes;
-    } else {
-      // Already processed by middleware
-      attributes = req.body;
-    }
-
-    const jsonApiResource = {
-      type: 'room',
-      id: '', // Will be ignored for creation
-      attributes,
-    };
-    const deserializedData = deserializeRoom(jsonApiResource);
-    const { name, description, maxPlayers, settings } = deserializedData;
     const userId = req.userId;
 
     if (!userId) {
@@ -75,6 +68,8 @@ export const createRoom = async (req: Request, res: Response) => {
       });
     }
 
+    const { name, description, maxPlayers, settings } = deserializeRoom(req.body.data);
+
     const roomData = {
       name,
       description,
@@ -90,24 +85,10 @@ export const createRoom = async (req: Request, res: Response) => {
     const room = new RoomModel(roomData);
     await room.save();
 
-    // Populate creator information
     await room.populate('createdBy', 'firstName lastName displayName');
-
-    const response = serializeRoomWithIncludes(room, {
-      createdBy: {
-        id: String(user._id),
-        type: 'user',
-        attributes: {
-          firstName: user.firstName,
-          lastName: user.lastName,
-          displayName: user.displayName,
-        },
-      },
-    });
-
-    res.status(201).json(response);
+    res.status(201).json(serializeRoomWithCreator(room, user as unknown as PopulatedUser));
   } catch (error) {
-    console.error('Error creating room:', error);
+    logger.error('Error creating room:', error);
     res.status(500).json({
       errors: [
         {
@@ -180,7 +161,7 @@ export const getRooms = async (req: Request, res: Response) => {
 
     res.json(response);
   } catch (error) {
-    console.error('Error fetching rooms:', error);
+    logger.error('Error fetching rooms:', error);
     res.status(500).json({
       errors: [
         {
@@ -228,23 +209,9 @@ export const getRoom = async (req: Request, res: Response) => {
       });
     }
 
-    // Include the populated createdBy user data
-    const createdByUser = room.createdBy as unknown as PopulatedUser;
-    const response = serializeRoomWithIncludes(room, {
-      createdBy: {
-        id: String(createdByUser._id),
-        type: 'user',
-        attributes: {
-          firstName: createdByUser.firstName,
-          lastName: createdByUser.lastName,
-          displayName: createdByUser.displayName,
-        },
-      },
-    });
-
-    res.json(response);
+    res.json(serializeRoomWithCreator(room, room.createdBy as unknown as PopulatedUser));
   } catch (error) {
-    console.error('Error fetching room:', error);
+    logger.error('Error fetching room:', error);
     res.status(500).json({
       errors: [
         {
@@ -262,24 +229,6 @@ export const updateRoom = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
     const userId = req.userId;
-
-    // Handle the case where middleware might not have processed the request yet
-    let attributes: Record<string, unknown>;
-    if (req.body.data?.attributes) {
-      // Full JSON:API format - extract attributes
-      attributes = req.body.data.attributes;
-    } else {
-      // Already processed by middleware
-      attributes = req.body;
-    }
-
-    const jsonApiResource = {
-      type: 'room',
-      id: '', // Will be ignored for updates
-      attributes,
-    };
-    const deserializedData = deserializeRoom(jsonApiResource);
-    const { name, description, maxPlayers, settings } = deserializedData;
 
     if (!userId) {
       return res.status(401).json({
@@ -320,6 +269,8 @@ export const updateRoom = async (req: Request, res: Response) => {
       });
     }
 
+    const { name, description, maxPlayers, settings } = deserializeRoom(req.body.data);
+
     // Update fields
     if (name !== undefined) room.name = name;
     if (description !== undefined) room.description = description;
@@ -330,24 +281,9 @@ export const updateRoom = async (req: Request, res: Response) => {
 
     await room.save();
     await room.populate('createdBy', 'firstName lastName displayName');
-
-    // Include the populated createdBy user data
-    const createdByUser = room.createdBy as unknown as PopulatedUser;
-    const response = serializeRoomWithIncludes(room, {
-      createdBy: {
-        id: String(createdByUser._id),
-        type: 'user',
-        attributes: {
-          firstName: createdByUser.firstName,
-          lastName: createdByUser.lastName,
-          displayName: createdByUser.displayName,
-        },
-      },
-    });
-
-    res.json(response);
+    res.json(serializeRoomWithCreator(room, room.createdBy as unknown as PopulatedUser));
   } catch (error) {
-    console.error('Error updating room:', error);
+    logger.error('Error updating room:', error);
     res.status(500).json({
       errors: [
         {
@@ -411,7 +347,7 @@ export const deleteRoom = async (req: Request, res: Response) => {
 
     res.status(204).json({});
   } catch (error) {
-    console.error('Error deleting room:', error);
+    logger.error('Error deleting room:', error);
     res.status(500).json({
       errors: [
         {
@@ -421,31 +357,5 @@ export const deleteRoom = async (req: Request, res: Response) => {
         },
       ],
     });
-  }
-};
-
-// Update player count (for socket connections)
-export const updatePlayerCount = async (roomId: string, increment: boolean) => {
-  try {
-    const room = await RoomModel.findOne({ roomId, isActive: true });
-    if (!room) return false;
-
-    if (increment) {
-      if (room.currentPlayers < (room.maxPlayers || 10)) {
-        room.currentPlayers += 1;
-      } else {
-        return false; // Room is full
-      }
-    } else {
-      if (room.currentPlayers > 0) {
-        room.currentPlayers -= 1;
-      }
-    }
-
-    await room.save();
-    return true;
-  } catch (error) {
-    console.error('Error updating player count:', error);
-    return false;
   }
 };

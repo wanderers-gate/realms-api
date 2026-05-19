@@ -231,16 +231,23 @@ describe('Canvas Socket Events', () => {
         size: 2,
       };
 
-      const receivedEvents: (DrawingEvent & { operationId: string; timestamp: Date })[] = [];
-      clientSocket2.on('canvas-draw', (event) => {
-        receivedEvents.push(event);
+      const broadcastReceived = new Promise<
+        DrawingEvent & { operationId: string; timestamp: Date }
+      >((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error('Timeout: canvas-draw not broadcast')),
+          5000
+        );
+        clientSocket2.on('canvas-draw', (event) => {
+          clearTimeout(timeout);
+          resolve(event);
+        });
       });
 
       // Emit drawing event from first client
       clientSocket.emit('canvas-draw', drawingEvent);
 
-      // Wait for event processing
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      const broadcastEvent = await broadcastReceived;
 
       // Check that canvas was saved to database
       const canvas = await CanvasModel.findOne({ roomId: testRoom._id.toString() });
@@ -253,11 +260,10 @@ describe('Canvas Socket Events', () => {
       expect(canvas?.operations[0].size).toBe(2);
 
       // Check that event was broadcast to other client
-      expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0].type).toBe('draw');
-      expect(receivedEvents[0].roomId).toBe(testRoom._id.toString());
-      expect(receivedEvents[0].operationId).toBeDefined();
-      expect(receivedEvents[0].timestamp).toBeDefined();
+      expect(broadcastEvent.type).toBe('draw');
+      expect(broadcastEvent.roomId).toBe(testRoom._id.toString());
+      expect(broadcastEvent.operationId).toBeDefined();
+      expect(broadcastEvent.timestamp).toBeDefined();
     });
 
     it('should create new canvas if none exists', async () => {

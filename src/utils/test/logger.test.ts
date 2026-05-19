@@ -1,55 +1,41 @@
 import logger from '../logger';
 
 describe('Logger', () => {
-  let consoleSpy: jest.SpyInstance;
-
   beforeEach(() => {
-    // Spy on console methods
-    consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
+    jest.spyOn(console, 'log').mockImplementation();
+    jest.spyOn(console, 'warn').mockImplementation();
     jest.spyOn(console, 'error').mockImplementation();
   });
 
   afterEach(() => {
-    // Restore console methods
-    consoleSpy.mockRestore();
     jest.restoreAllMocks();
   });
 
   describe('info', () => {
     it('should log info message with prefix', () => {
-      const message = 'Test info message';
-      logger.info(message);
-
-      expect(consoleSpy).toHaveBeenCalledWith('[INFO] Test info message');
+      logger.info('Test info message');
+      expect(console.log).toHaveBeenCalledWith('[INFO] Test info message');
     });
 
     it('should log info message with additional arguments', () => {
-      const message = 'Test info message';
       const arg1 = { key: 'value' };
       const arg2 = 123;
-
-      logger.info(message, arg1, arg2);
-
-      expect(consoleSpy).toHaveBeenCalledWith('[INFO] Test info message', arg1, arg2);
+      logger.info('Test info message', arg1, arg2);
+      expect(console.log).toHaveBeenCalledWith('[INFO] Test info message', arg1, arg2);
     });
   });
 
   describe('warn', () => {
     it('should log warning message with prefix', () => {
-      const message = 'Test warning message';
-      logger.warn(message);
-
-      expect(consoleSpy).toHaveBeenCalledWith('[WARN] Test warning message');
+      logger.warn('Test warning message');
+      expect(console.warn).toHaveBeenCalledWith('[WARN] Test warning message');
     });
 
     it('should log warning message with additional arguments', () => {
-      const message = 'Test warning message';
       const arg1 = { key: 'value' };
       const arg2 = 123;
-
-      logger.warn(message, arg1, arg2);
-
-      expect(consoleSpy).toHaveBeenCalledWith('[WARN] Test warning message', arg1, arg2);
+      logger.warn('Test warning message', arg1, arg2);
+      expect(console.warn).toHaveBeenCalledWith('[WARN] Test warning message', arg1, arg2);
     });
   });
 

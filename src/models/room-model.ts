@@ -1,5 +1,10 @@
 import mongoose, { type Document, type Model, type Types } from 'mongoose';
 
+export interface UserPermission {
+  userId: string;
+  canModifyDrawings: boolean;
+}
+
 export interface Room {
   _id: Types.ObjectId;
   name: string;
@@ -14,6 +19,7 @@ export interface Room {
     allowGuests: boolean; // Whether non-authenticated users can join
     gridSize?: number; // Grid size for the virtual tabletop
   };
+  userPermissions: UserPermission[];
   createdAt: Date;
   updatedAt: Date;
   lastActivity: Date; // Track when the room was last used
@@ -90,6 +96,15 @@ const roomSchema = new mongoose.Schema<RoomDocument>(
       type: Date,
       required: true,
       default: Date.now,
+    },
+    userPermissions: {
+      type: [
+        {
+          userId: { type: String, required: true },
+          canModifyDrawings: { type: Boolean, required: true, default: false },
+        },
+      ],
+      default: [],
     },
   },
   {

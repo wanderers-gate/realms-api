@@ -5,13 +5,10 @@ import {
   getCanvas,
 } from '../controllers/canvas.controller';
 import { authenticateOptionalJwt } from '../middleware/authenticate';
-import { jsonApiMiddleware } from '../middleware/json-api';
 
 const router = Router();
 
-// Apply middleware
-router.use(jsonApiMiddleware);
-router.use(authenticateOptionalJwt()); // Allow guests to view canvas if room allows
+router.use(authenticateOptionalJwt());
 
 // Canvas routes
 router.get('/:roomId', getCanvas); // GET /api/canvas/:roomId

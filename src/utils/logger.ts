@@ -1,6 +1,6 @@
 const logger = {
   info: (message: string, ...args: unknown[]): void => {
-    console.warn(`[INFO] ${message}`, ...args);
+    console.log(`[INFO] ${message}`, ...args);
   },
   warn: (message: string, ...args: unknown[]): void => {
     console.warn(`[WARN] ${message}`, ...args);

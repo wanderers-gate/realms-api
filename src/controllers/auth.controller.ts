@@ -83,80 +83,53 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body;
 
-    // Validate required fields
     if (!email || !password) {
-      res.status(400).json({
-        errors: [
-          {
-            status: '400',
-            title: 'Bad Request',
-            detail: 'Email and password are required',
-          },
-        ],
-      });
+      res.jsonApiError(400, [
+        { status: '400', title: 'Bad Request', detail: 'Email and password are required' },
+      ]);
       return;
     }
 
-    // Find user
     const user = await UserModel.findOne({ email });
     if (!user) {
       logger.error('[LOGIN] Failed - user not found', { email });
-      res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'Invalid credentials',
-          },
-        ],
-      });
+      res.jsonApiError(401, [
+        { status: '401', title: 'Unauthorized', detail: 'Invalid credentials' },
+      ]);
       return;
     }
 
-    // Verify password
     const isValid = await user.comparePassword(password);
     if (!isValid) {
       logger.error('[LOGIN] Failed - invalid password', { email });
-      res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'Invalid credentials',
-          },
-        ],
-      });
+      res.jsonApiError(401, [
+        { status: '401', title: 'Unauthorized', detail: 'Invalid credentials' },
+      ]);
       return;
     }
 
-    // Increment tokenVersion and save
     user.tokenVersion += 1;
     await user.save();
 
-    // Generate new token with updated tokenVersion
     const token = generateToken(user._id.toString(), user.tokenVersion);
-
-    // Set token in cookie
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-      maxAge: 3600000, // 1 hour
+      maxAge: 3600000,
     });
 
     logger.info('[LOGIN] Success', { email });
     res.status(200).send();
   } catch (error) {
     logger.error('[LOGIN] Error:', error);
-    res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'An error occurred while logging in',
-        },
-      ],
-    });
+    res.jsonApiError(500, [
+      {
+        status: '500',
+        title: 'Internal Server Error',
+        detail: 'An error occurred while logging in',
+      },
+    ]);
   }
 };
 
@@ -171,23 +144,15 @@ export const logout = (_req: Request, res: Response): void => {
 
 export const getCurrentUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    // The user should be available from the authentication middleware
     const user = req.user;
 
     if (!user) {
-      res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User not found in request',
-          },
-        ],
-      });
+      res.jsonApiError(401, [
+        { status: '401', title: 'Unauthorized', detail: 'User not found in request' },
+      ]);
       return;
     }
 
-    // Return user information with displayName fallback
     res.status(200).json({
       id: user._id.toString(),
       email: user.email,
@@ -197,35 +162,16 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
     });
   } catch (error) {
     logger.error('[GET CURRENT USER] Error:', error);
-    res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'An error occurred while fetching user data',
-        },
-      ],
-    });
+    res.jsonApiError(500, [
+      {
+        status: '500',
+        title: 'Internal Server Error',
+        detail: 'An error occurred while fetching user data',
+      },
+    ]);
   }
 };
 
-export const authCheck = async (_req: Request, res: Response): Promise<void> => {
-  try {
-    // Since this route is now behind the authentication middleware,
-    // if the request made it here, the user is already authenticated
-
-    // Simply return success status
-    res.status(200).send();
-  } catch (error) {
-    logger.error('[AUTH CHECK] Error:', error);
-    res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'An error occurred while checking auth',
-        },
-      ],
-    });
-  }
+export const authCheck = (_req: Request, res: Response): void => {
+  res.status(200).send();
 };
