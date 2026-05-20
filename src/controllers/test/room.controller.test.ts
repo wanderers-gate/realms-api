@@ -1,4 +1,13 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from '@jest/globals';
 import type { Request, Response } from 'express';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { Types } from 'mongoose';
@@ -9,9 +18,9 @@ import { createRoom, deleteRoom, getRoom, getRooms, updateRoom } from '../room.c
 
 // Mock the response object
 const mockResponse = () => {
-  const res: Partial<Response> = {};
-  res.status = jest.fn().mockReturnValue(res as Response);
-  res.json = jest.fn().mockReturnValue(res as Response);
+  const res = {} as Response;
+  res.status = jest.fn<(code: number) => Response>().mockReturnValue(res);
+  res.json = jest.fn<Response['json']>().mockReturnValue(res);
   return res as Response & { json: jest.MockedFunction<Response['json']> };
 };
 
@@ -22,15 +31,15 @@ const mockRequest = (
   query: Record<string, string> = {},
   user: { id: string } | null = null
 ) => {
-  const req: Partial<Request> = {
+  const req = {
     body,
     params,
     query,
     userId: user?.id,
     // biome-ignore lint/suspicious/noExplicitAny: This is for test compatibility with middleware expectations
     user: user ? ({ id: user.id } as any) : undefined,
-  };
-  return req as Request;
+  } as unknown as Request;
+  return req;
 };
 
 describe('Room Controller', () => {
@@ -85,17 +94,16 @@ describe('Room Controller', () => {
     it('should create a room successfully', async () => {
       const req = mockRequest(
         {
-          data: {
-            type: 'room',
-            attributes: {
-              name: 'Test Room',
-              description: 'A test room',
-              maxPlayers: 5,
-              settings: {
-                isPrivate: false,
-                allowGuests: true,
-                gridSize: 50,
-              },
+          type: 'room',
+          id: '',
+          attributes: {
+            name: 'Test Room',
+            description: 'A test room',
+            maxPlayers: 5,
+            settings: {
+              isPrivate: false,
+              allowGuests: true,
+              gridSize: 50,
             },
           },
         },
@@ -392,12 +400,11 @@ describe('Room Controller', () => {
 
       const req = mockRequest(
         {
-          data: {
-            type: 'room',
-            attributes: {
-              name: 'Updated Name',
-              description: 'Updated description',
-            },
+          type: 'room',
+          id: room.roomId,
+          attributes: {
+            name: 'Updated Name',
+            description: 'Updated description',
           },
         },
         { roomId: room.roomId },
@@ -431,12 +438,7 @@ describe('Room Controller', () => {
 
       const req = mockRequest(
         {
-          data: {
-            type: 'room',
-            attributes: {
-              name: 'Updated Name',
-            },
-          },
+          name: 'Updated Name',
         },
         { roomId: room.roomId },
         {},

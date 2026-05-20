@@ -2,16 +2,6 @@ import type { NextFunction, Request, Response } from 'express';
 import { type UserDocument, UserModel } from '../models/user-model';
 import { verifyJwt } from '../utils/jwt';
 
-// Add custom type for request with user
-declare global {
-  namespace Express {
-    interface Request {
-      userId?: string;
-      user?: UserDocument;
-    }
-  }
-}
-
 export const authenticate = async (
   req: Request,
   res: Response,

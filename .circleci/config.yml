@@ -148,7 +148,7 @@ jobs:
           at: .
       - run:
           name: Lint
-          command: npm run pipeline:lint
+          command: npm run ci:lint
 
   test:
     docker:
@@ -161,7 +161,7 @@ jobs:
           at: .
       - run:
           name: Run tests
-          command: npm run pipeline:test -- --detectOpenHandles
+          command: npm run ci:test -- --detectOpenHandles
 
   build:
     docker:

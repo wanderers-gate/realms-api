@@ -12,11 +12,11 @@
     "lint": "biome lint src/",
     "format": "biome format --write src/",
     "check": "biome check --write src/",
-    "pipeline:lint": "biome check --write src/ && tsc --noEmit",
+    "ci:lint": "biome check --write src/ && tsc --noEmit",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "pipeline:test": "jest --ci --coverage --runInBand",
+    "ci:test": "jest --ci --coverage --runInBand",
     "seed": "ts-node-dev --transpile-only src/seeds/run-seed.ts"
   },
   "author": "",

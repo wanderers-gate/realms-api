@@ -68,7 +68,7 @@ export const createRoom = async (req: Request, res: Response) => {
       });
     }
 
-    const { name, description, maxPlayers, settings } = deserializeRoom(req.body.data);
+    const { name, description, maxPlayers, settings } = deserializeRoom(req.body);
 
     const roomData = {
       name,
@@ -269,7 +269,7 @@ export const updateRoom = async (req: Request, res: Response) => {
       });
     }
 
-    const { name, description, maxPlayers, settings } = deserializeRoom(req.body.data);
+    const { name, description, maxPlayers, settings } = deserializeRoom(req.body);
 
     // Update fields
     if (name !== undefined) room.name = name;
