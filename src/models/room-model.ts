@@ -15,9 +15,15 @@ export interface Room {
   maxPlayers?: number; // Optional player limit
   currentPlayers: number; // Current number of players in the room
   settings: {
-    isPrivate: boolean; // Whether the room requires an invite
-    allowGuests: boolean; // Whether non-authenticated users can join
-    gridSize?: number; // Grid size for the virtual tabletop
+    isPrivate: boolean;
+    allowGuests: boolean;
+    gridSize?: number;
+    gridVisible?: boolean;
+    gridType?: string;
+    snapToGrid?: boolean;
+    gridOpacity?: number;
+    canvasWidth?: number;
+    canvasHeight?: number;
   };
   userPermissions: UserPermission[];
   createdAt: Date;
@@ -88,8 +94,44 @@ const roomSchema = new mongoose.Schema<RoomDocument>(
         type: Number,
         required: false,
         min: 10,
-        max: 100,
+        max: 300,
         default: 50,
+      },
+      gridVisible: {
+        type: Boolean,
+        required: false,
+        default: true,
+      },
+      gridType: {
+        type: String,
+        required: false,
+        default: 'square',
+      },
+      snapToGrid: {
+        type: Boolean,
+        required: false,
+        default: false,
+      },
+      gridOpacity: {
+        type: Number,
+        required: false,
+        min: 0,
+        max: 1,
+        default: 0.6,
+      },
+      canvasWidth: {
+        type: Number,
+        required: false,
+        min: 100,
+        max: 20000,
+        default: 3000,
+      },
+      canvasHeight: {
+        type: Number,
+        required: false,
+        min: 100,
+        max: 20000,
+        default: 2000,
       },
     },
     lastActivity: {

@@ -341,6 +341,49 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
+  socket.on('grid-settings-update', async (data: { roomId: string; gridSettings: unknown }) => {
+    try {
+      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
+      if (!roomDoc) return;
+      const isDM =
+        socket.authenticatedUserId && roomDoc.createdBy.toString() === socket.authenticatedUserId;
+      if (!isDM) return;
+      socket.to(data.roomId).emit('grid-settings-update', data);
+    } catch (error) {
+      logger.error(`[GRID] Error broadcasting grid settings for room ${data.roomId}:`, error);
+    }
+  });
+
+  socket.on('canvas-scale', async (data: { roomId: string; scaleX: number; scaleY: number }) => {
+    try {
+      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
+      if (!roomDoc) return;
+      const isDM =
+        socket.authenticatedUserId && roomDoc.createdBy.toString() === socket.authenticatedUserId;
+      if (!isDM) return;
+
+      // Flush any pending operations before scaling so nothing is missed
+      await savePendingOperations(data.roomId);
+
+      const canvas = await CanvasModel.findOne({ roomId: data.roomId });
+      if (canvas && canvas.operations.length > 0) {
+        for (const op of canvas.operations) {
+          op.points = op.points.map((p) => ({ x: p.x * data.scaleX, y: p.y * data.scaleY }));
+        }
+        canvas.markModified('operations');
+        await canvas.save();
+        logger.info(
+          `[CANVAS] Scaled ${canvas.operations.length} operations for room ${data.roomId} by (${data.scaleX}, ${data.scaleY})`
+        );
+      }
+
+      // Broadcast to all other clients in the room
+      socket.to(data.roomId).emit('canvas-scale', data);
+    } catch (error) {
+      logger.error(`[CANVAS] Error scaling canvas operations for room ${data.roomId}:`, error);
+    }
+  });
+
   // Handle permission updates (DM only)
   socket.on(
     'update-permissions',
