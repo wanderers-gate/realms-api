@@ -29,12 +29,12 @@ commands:
               echo "export BUILD_TYPE=snapshot" >> $BASH_ENV
               echo "export S3_PREFIX=snapshots/$BRANCH_NAME/$TIMESTAMP" >> $BASH_ENV
               echo "export S3_LATEST_PREFIX=snapshots/$BRANCH_NAME/latest" >> $BASH_ENV
-            # master branch
-            elif [[ $CIRCLE_BRANCH == "master" ]]; then
-              echo "export VERSION=master-SNAPSHOT-$TIMESTAMP" >> $BASH_ENV
+            # main branch
+            elif [[ $CIRCLE_BRANCH == "main" ]]; then
+              echo "export VERSION=main-SNAPSHOT-$TIMESTAMP" >> $BASH_ENV
               echo "export BUILD_TYPE=snapshot" >> $BASH_ENV
-              echo "export S3_PREFIX=snapshots/master/$TIMESTAMP" >> $BASH_ENV
-              echo "export S3_LATEST_PREFIX=snapshots/master/latest" >> $BASH_ENV
+              echo "export S3_PREFIX=snapshots/main/$TIMESTAMP" >> $BASH_ENV
+              echo "export S3_LATEST_PREFIX=snapshots/main/latest" >> $BASH_ENV
             else
               echo "Build from branch $CIRCLE_BRANCH"
               echo "export VERSION=${CIRCLE_BRANCH/\//-}-SNAPSHOT-$TIMESTAMP" >> $BASH_ENV
@@ -237,14 +237,14 @@ workflows:
           filters:
             tags:
               only: /^release\/.*/
-      # QA deployments (from feature branches and master)
+      # QA deployments (from feature branches and main)
       - deploy-qa:
           requires:
             - build
           filters:
             branches:
               only:
-                - master
+                - main
                 - /^feature\/.*/
           context: Realms
       # Staging deployments (from release tags)
