@@ -114,6 +114,7 @@ async function loadTokens(roomId: string): Promise<Token[]> {
       ownerId: t.ownerId,
       ownerIds: t.ownerIds?.length ? t.ownerIds : [t.ownerId],
       imageUrl: t.imageUrl,
+      visible: t.visible ?? true,
     }));
   } catch (error) {
     logger.error(`[TOKEN] Error loading tokens for room ${roomId}:`, error);
@@ -431,6 +432,7 @@ io.on('connection', (socket: Socket) => {
           label: data.label,
           ownerId,
           ownerIds: [ownerId],
+          visible: true,
         };
         await TokenModel.create(token);
         io.to(data.roomId).emit('token-added', token);
@@ -514,6 +516,25 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
+  socket.on('token-edit', async (data: { roomId: string; tokenId: string; color: string; label: string }) => {
+    try {
+      const requesterId = socket.authenticatedUserId || socket.id;
+      const [token, roomDoc] = await Promise.all([
+        TokenModel.findOne({ id: data.tokenId, roomId: data.roomId }),
+        RoomModel.findOne({ roomId: data.roomId }),
+      ]);
+      if (!token) return;
+      const isDM = socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+      const ownerIds = token.ownerIds?.length ? token.ownerIds : [token.ownerId];
+      if (!isDM && !ownerIds.includes(requesterId)) return;
+      await TokenModel.updateOne({ id: data.tokenId }, { color: data.color, label: data.label });
+      io.to(data.roomId).emit('token-edited', { tokenId: data.tokenId, color: data.color, label: data.label });
+      logger.info(`[TOKEN] Edited token ${data.tokenId}`);
+    } catch (error) {
+      logger.error(`[TOKEN] Error editing token ${data.tokenId}:`, error);
+    }
+  });
+
   socket.on('token-assign-owners', async (data: { roomId: string; tokenId: string; ownerIds: string[] }) => {
     try {
       const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
@@ -524,6 +545,19 @@ io.on('connection', (socket: Socket) => {
       logger.info(`[TOKEN] Updated owners for token ${data.tokenId}`);
     } catch (error) {
       logger.error(`[TOKEN] Error assigning owners to token ${data.tokenId}:`, error);
+    }
+  });
+
+  socket.on('token-toggle-visibility', async (data: { roomId: string; tokenId: string; visible: boolean }) => {
+    try {
+      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
+      const isDM = socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+      if (!isDM) return;
+      await TokenModel.updateOne({ id: data.tokenId }, { visible: data.visible });
+      io.to(data.roomId).emit('token-visibility-updated', { tokenId: data.tokenId, visible: data.visible });
+      logger.info(`[TOKEN] Set token ${data.tokenId} visibility to ${data.visible}`);
+    } catch (error) {
+      logger.error(`[TOKEN] Error toggling visibility for token ${data.tokenId}:`, error);
     }
   });
 

@@ -12,6 +12,7 @@ export interface Token {
   ownerId: string;
   ownerIds: string[];
   imageUrl?: string;
+  visible: boolean;
 }
 
 type TokenDocument = Document & Token;
@@ -29,6 +30,7 @@ const TokenSchema = new Schema<TokenDocument>(
     ownerId: { type: String, required: true },
     ownerIds: { type: [String], default: [] },
     imageUrl: { type: String },
+    visible: { type: Boolean, default: true },
   },
   { timestamps: true }
 );
