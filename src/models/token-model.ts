@@ -10,6 +10,7 @@ export interface Token {
   color: string;
   label: string;
   ownerId: string;
+  ownerIds: string[];
   imageUrl?: string;
 }
 
@@ -26,6 +27,7 @@ const TokenSchema = new Schema<TokenDocument>(
     color: { type: String, required: true },
     label: { type: String, default: '' },
     ownerId: { type: String, required: true },
+    ownerIds: { type: [String], default: [] },
     imageUrl: { type: String },
   },
   { timestamps: true }
