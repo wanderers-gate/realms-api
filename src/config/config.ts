@@ -6,6 +6,7 @@ interface Config {
   port: number;
   nodeEnv: string;
   jwtSecret: string;
+  allowedOrigins: string[];
   mongodb: {
     uri: string;
     options: {
@@ -31,6 +32,16 @@ const config: Config = {
   port: Number(process.env.PORT) || 3001,
   nodeEnv: process.env.NODE_ENV || 'development',
   jwtSecret: process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production',
+  allowedOrigins: (process.env.ALLOWED_ORIGINS || '').split(',').filter(Boolean).length
+    ? (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim())
+    : [
+        'http://localhost:5174',
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'http://localhost:8080',
+        'http://realmsapp.io',
+        'https://realmsapp.io',
+      ],
   mongodb: {
     uri: getMongoDBUri(),
     options: {

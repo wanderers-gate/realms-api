@@ -6,7 +6,6 @@ import { deserializeRoom, serializeRoomWithIncludes } from '../serializers/room.
 import type { JsonApiResourceObject } from '../types/json-api';
 import logger from '../utils/logger';
 
-// Type for populated user data
 interface PopulatedUser {
   _id: Types.ObjectId;
   firstName: string;
@@ -14,7 +13,6 @@ interface PopulatedUser {
   displayName: string;
 }
 
-// Type for MongoDB query
 interface RoomQuery {
   isActive: boolean;
   'settings.allowGuests'?: boolean;
@@ -37,7 +35,6 @@ const serializeRoomWithCreator = (room: RoomDocument, creator: PopulatedUser) =>
     },
   });
 
-// Create a new room
 export const createRoom = async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
@@ -54,54 +51,38 @@ export const createRoom = async (req: Request, res: Response) => {
       });
     }
 
-    // Verify user exists
     const user = await UserModel.findById(userId);
     if (!user) {
       return res.status(404).json({
-        errors: [
-          {
-            status: '404',
-            title: 'User Not Found',
-            detail: 'User not found',
-          },
-        ],
+        errors: [{ status: '404', title: 'User Not Found', detail: 'User not found' }],
       });
     }
 
     const { name, description, maxPlayers, settings } = deserializeRoom(req.body);
 
-    const roomData = {
+    const room = new RoomModel({
       name,
       description,
       createdBy: userId,
       maxPlayers,
       settings: {
         isPrivate: settings?.isPrivate || false,
-        allowGuests: settings?.allowGuests !== false, // Default to true
+        allowGuests: settings?.allowGuests !== false,
         gridSize: settings?.gridSize || 50,
       },
-    };
+    });
 
-    const room = new RoomModel(roomData);
     await room.save();
-
     await room.populate('createdBy', 'firstName lastName displayName');
     res.status(201).json(serializeRoomWithCreator(room, user as unknown as PopulatedUser));
   } catch (error) {
     logger.error('Error creating room:', error);
     res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to create room',
-        },
-      ],
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to create room' }],
     });
   }
 };
 
-// Get all public rooms
 export const getRooms = async (req: Request, res: Response) => {
   try {
     const { page = 1, limit = 20, search } = req.query;
@@ -109,12 +90,10 @@ export const getRooms = async (req: Request, res: Response) => {
 
     const query: RoomQuery = { isActive: true };
 
-    // If user is not authenticated, only show rooms that allow guests
     if (!req.userId) {
       query['settings.allowGuests'] = true;
     }
 
-    // Add search functionality
     if (search) {
       query.$or = [
         { name: { $regex: search as string, $options: 'i' } },
@@ -122,7 +101,7 @@ export const getRooms = async (req: Request, res: Response) => {
       ];
     }
 
-    const rooms = await RoomModel.find(query)
+    const roomList = await RoomModel.find(query)
       .populate('createdBy', 'firstName lastName displayName')
       .sort({ lastActivity: -1 })
       .skip(skip)
@@ -130,9 +109,8 @@ export const getRooms = async (req: Request, res: Response) => {
 
     const total = await RoomModel.countDocuments(query);
 
-    // Include the populated createdBy user data for each room
     const includes: Record<string, JsonApiResourceObject> = {};
-    for (const room of rooms) {
+    for (const room of roomList) {
       if (room.createdBy && typeof room.createdBy === 'object' && 'firstName' in room.createdBy) {
         const createdByUser = room.createdBy as unknown as PopulatedUser;
         includes[`user-${createdByUser._id}`] = {
@@ -147,9 +125,8 @@ export const getRooms = async (req: Request, res: Response) => {
       }
     }
 
-    const response = serializeRoomWithIncludes(rooms, includes);
+    const response = serializeRoomWithIncludes(roomList, includes);
 
-    // Add pagination metadata
     response.meta = {
       pagination: {
         page: Number(page),
@@ -163,18 +140,11 @@ export const getRooms = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching rooms:', error);
     res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to fetch rooms',
-        },
-      ],
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to fetch rooms' }],
     });
   }
 };
 
-// Get a specific room by roomId
 export const getRoom = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
@@ -186,17 +156,10 @@ export const getRoom = async (req: Request, res: Response) => {
 
     if (!room) {
       return res.status(404).json({
-        errors: [
-          {
-            status: '404',
-            title: 'Room Not Found',
-            detail: 'Room not found or inactive',
-          },
-        ],
+        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
       });
     }
 
-    // Check if user can access the room
     if (!req.userId && !room.settings.allowGuests) {
       return res.status(403).json({
         errors: [
@@ -213,18 +176,11 @@ export const getRoom = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching room:', error);
     res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to fetch room',
-        },
-      ],
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to fetch room' }],
     });
   }
 };
 
-// Update room (only by creator)
 export const updateRoom = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
@@ -246,17 +202,10 @@ export const updateRoom = async (req: Request, res: Response) => {
 
     if (!room) {
       return res.status(404).json({
-        errors: [
-          {
-            status: '404',
-            title: 'Room Not Found',
-            detail: 'Room not found or inactive',
-          },
-        ],
+        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
       });
     }
 
-    // Check if user is the creator
     if (room.createdBy.toString() !== userId) {
       return res.status(403).json({
         errors: [
@@ -271,13 +220,10 @@ export const updateRoom = async (req: Request, res: Response) => {
 
     const { name, description, maxPlayers, settings } = deserializeRoom(req.body);
 
-    // Update fields
     if (name !== undefined) room.name = name;
     if (description !== undefined) room.description = description;
     if (maxPlayers !== undefined) room.maxPlayers = maxPlayers;
-    if (settings !== undefined) {
-      room.settings = { ...room.settings, ...settings };
-    }
+    if (settings !== undefined) room.settings = { ...room.settings, ...settings };
 
     await room.save();
     await room.populate('createdBy', 'firstName lastName displayName');
@@ -285,18 +231,11 @@ export const updateRoom = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error updating room:', error);
     res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to update room',
-        },
-      ],
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to update room' }],
     });
   }
 };
 
-// Delete room (only by creator)
 export const deleteRoom = async (req: Request, res: Response) => {
   try {
     const { roomId } = req.params;
@@ -318,17 +257,10 @@ export const deleteRoom = async (req: Request, res: Response) => {
 
     if (!room) {
       return res.status(404).json({
-        errors: [
-          {
-            status: '404',
-            title: 'Room Not Found',
-            detail: 'Room not found or inactive',
-          },
-        ],
+        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
       });
     }
 
-    // Check if user is the creator
     if (room.createdBy.toString() !== userId) {
       return res.status(403).json({
         errors: [
@@ -341,7 +273,7 @@ export const deleteRoom = async (req: Request, res: Response) => {
       });
     }
 
-    // Soft delete by setting isActive to false
+    // Soft delete — room data is preserved for history/audit
     room.isActive = false;
     await room.save();
 
@@ -349,13 +281,7 @@ export const deleteRoom = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error deleting room:', error);
     res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to delete room',
-        },
-      ],
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to delete room' }],
     });
   }
 };

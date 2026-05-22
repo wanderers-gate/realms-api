@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { Types } from 'mongoose';
 import { UserModel } from '../../models/user-model';
 import { getTokenFromHeaders, verifyJwt } from '../../utils/jwt';
-import { authenticateOptionalJwt } from '../authenticate';
+import { authenticateOptionalJwt } from '../optional-auth.middleware';
 
 jest.mock('../../utils/jwt');
 jest.mock('../../models/user-model');

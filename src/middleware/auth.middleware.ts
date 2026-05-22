@@ -12,13 +12,7 @@ export const authenticate = async (
 
     if (!token) {
       res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'No token provided',
-          },
-        ],
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'No token provided' }],
       });
       return;
     }
@@ -26,13 +20,7 @@ export const authenticate = async (
     const decoded = verifyJwt(token);
     if (!decoded) {
       res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'Invalid token',
-          },
-        ],
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Invalid token' }],
       });
       return;
     }
@@ -40,34 +28,21 @@ export const authenticate = async (
     const user = await UserModel.findById(decoded.userId);
     if (!user) {
       res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User not found',
-          },
-        ],
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'User not found' }],
       });
       return;
     }
 
-    // Check if token version matches
+    // Token version mismatch means the user has logged out on another device
     if (user.tokenVersion !== decoded.tokenVersion) {
       res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'Invalid token',
-          },
-        ],
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Invalid token' }],
       });
       return;
     }
 
-    // Add userId to request object
     req.userId = decoded.userId;
-    req.user = user;
+    req.user = user as UserDocument;
     next();
   } catch (_error) {
     res.status(500).json({

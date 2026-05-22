@@ -4,15 +4,14 @@ import {
   deleteCanvasOperations,
   getCanvas,
 } from '../controllers/canvas.controller';
-import { authenticateOptionalJwt } from '../middleware/authenticate';
+import { authenticateOptionalJwt } from '../middleware/optional-auth.middleware';
 
-const router = Router();
+const canvasRouter = Router();
 
-router.use(authenticateOptionalJwt());
+canvasRouter.use(authenticateOptionalJwt());
 
-// Canvas routes
-router.get('/:roomId', getCanvas); // GET /api/canvas/:roomId
-router.post('/:roomId/operations', addCanvasOperation); // POST /api/canvas/:roomId/operations
-router.delete('/:roomId/operations', deleteCanvasOperations); // DELETE /api/canvas/:roomId/operations
+canvasRouter.get('/:roomId', getCanvas);
+canvasRouter.post('/:roomId/operations', addCanvasOperation);
+canvasRouter.delete('/:roomId/operations', deleteCanvasOperations);
 
-export default router;
+export default canvasRouter;

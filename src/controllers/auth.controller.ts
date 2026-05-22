@@ -8,7 +8,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password, firstName, lastName, displayName } = req.body;
 
-    // Validate required fields
     if (!email || !password || !firstName || !lastName) {
       res.jsonApiError(400, [
         {
@@ -20,7 +19,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Validate displayName if provided
     if (displayName && (displayName.trim().length === 0 || displayName.trim().length > 50)) {
       res.jsonApiError(400, [
         {
@@ -32,7 +30,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if user already exists
     const existingUser = await UserModel.findOne({ email });
     if (existingUser) {
       res.jsonApiError(400, [
@@ -45,26 +42,23 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Create new user
     const user = new UserModel({
       email,
       password,
       firstName,
       lastName,
-      displayName: displayName ? displayName.trim() : undefined, // Optional field
+      displayName: displayName ? displayName.trim() : undefined,
     });
 
     await user.save();
 
-    // Generate token with initial tokenVersion
     const token = generateToken(user._id.toString(), user.tokenVersion);
 
-    // Set token in cookie
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 3600000, // 1 hour
+      maxAge: 3600000,
     });
 
     res.status(201).json(serializeUser(user));
