@@ -6,7 +6,7 @@ import connectDB from './config/database';
 import app from './index';
 import { CanvasModel } from './models/canvas-model';
 import { RoomModel } from './models/room-model';
-import { TokenModel, type Token } from './models/token-model';
+import { type Token, TokenModel } from './models/token-model';
 import { chatService } from './services/chat.service';
 import type { CanvasOperation, DrawingEvent } from './types/canvas';
 import { verifyJwt } from './utils/jwt';
@@ -369,30 +369,35 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  socket.on('shape-move', async (data: { roomId: string; operationId: string; dx: number; dy: number }) => {
-    try {
-      await savePendingOperations(data.roomId);
-      const requesterUserId = socket.authenticatedUserId || socket.id;
-      const [canvas, roomDoc] = await Promise.all([
-        CanvasModel.findOne({ roomId: data.roomId }),
-        RoomModel.findOne({ roomId: data.roomId }),
-      ]);
-      if (!canvas) return;
-      const op = canvas.operations.find((o) => o.id === data.operationId);
-      if (!op) return;
-      const isDM = socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
-      const hasModifyPermission = roomDoc?.userPermissions.some(
-        (p) => p.userId === requesterUserId && p.canModifyDrawings
-      );
-      if (!isDM && !hasModifyPermission && op.userId !== requesterUserId) return;
-      op.points = op.points.map((p) => ({ x: p.x + data.dx, y: p.y + data.dy }));
-      await canvas.save();
-      socket.to(data.roomId).emit('shape-moved', data);
-      logger.info(`[CANVAS] Moved shape ${data.operationId} in room ${data.roomId}`);
-    } catch (error) {
-      logger.error(`[CANVAS] Error moving shape in room ${data.roomId}:`, error);
+  socket.on(
+    'shape-move',
+    async (data: { roomId: string; operationId: string; dx: number; dy: number }) => {
+      try {
+        await savePendingOperations(data.roomId);
+        const requesterUserId = socket.authenticatedUserId || socket.id;
+        const [canvas, roomDoc] = await Promise.all([
+          CanvasModel.findOne({ roomId: data.roomId }),
+          RoomModel.findOne({ roomId: data.roomId }),
+        ]);
+        if (!canvas) return;
+        const op = canvas.operations.find((o) => o.id === data.operationId);
+        if (!op) return;
+        const isDM =
+          socket.authenticatedUserId &&
+          roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+        const hasModifyPermission = roomDoc?.userPermissions.some(
+          (p) => p.userId === requesterUserId && p.canModifyDrawings
+        );
+        if (!isDM && !hasModifyPermission && op.userId !== requesterUserId) return;
+        op.points = op.points.map((p) => ({ x: p.x + data.dx, y: p.y + data.dy }));
+        await canvas.save();
+        socket.to(data.roomId).emit('shape-moved', data);
+        logger.info(`[CANVAS] Moved shape ${data.operationId} in room ${data.roomId}`);
+      } catch (error) {
+        logger.error(`[CANVAS] Error moving shape in room ${data.roomId}:`, error);
+      }
     }
-  });
+  );
 
   socket.on('grid-settings-update', async (data: { roomId: string; gridSettings: unknown }) => {
     try {
@@ -443,53 +448,71 @@ io.on('connection', (socket: Socket) => {
     }
   );
 
-  socket.on('token-move', async (data: { roomId: string; tokenId: string; x: number; y: number }) => {
-    try {
-      const requesterId = socket.authenticatedUserId || socket.id;
-      const [token, roomDoc] = await Promise.all([
-        TokenModel.findOne({ id: data.tokenId, roomId: data.roomId }),
-        RoomModel.findOne({ roomId: data.roomId }),
-      ]);
-      if (!token) return;
-      const isDM = socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
-      const ownerIds = token.ownerIds?.length ? token.ownerIds : [token.ownerId];
-      if (!isDM && !ownerIds.includes(requesterId)) return;
-      await TokenModel.updateOne({ id: data.tokenId }, { x: data.x, y: data.y });
-      io.to(data.roomId).emit('token-moved', { tokenId: data.tokenId, x: data.x, y: data.y });
-    } catch (error) {
-      logger.error(`[TOKEN] Error moving token ${data.tokenId}:`, error);
+  socket.on(
+    'token-move',
+    async (data: { roomId: string; tokenId: string; x: number; y: number }) => {
+      try {
+        const requesterId = socket.authenticatedUserId || socket.id;
+        const [token, roomDoc] = await Promise.all([
+          TokenModel.findOne({ id: data.tokenId, roomId: data.roomId }),
+          RoomModel.findOne({ roomId: data.roomId }),
+        ]);
+        if (!token) return;
+        const isDM =
+          socket.authenticatedUserId &&
+          roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+        const ownerIds = token.ownerIds?.length ? token.ownerIds : [token.ownerId];
+        if (!isDM && !ownerIds.includes(requesterId)) return;
+        await TokenModel.updateOne({ id: data.tokenId }, { x: data.x, y: data.y });
+        io.to(data.roomId).emit('token-moved', { tokenId: data.tokenId, x: data.x, y: data.y });
+      } catch (error) {
+        logger.error(`[TOKEN] Error moving token ${data.tokenId}:`, error);
+      }
     }
-  });
+  );
 
-  socket.on('token-resize', async (data: { roomId: string; tokenId: string; width: number; height: number }) => {
-    try {
-      const requesterId = socket.authenticatedUserId || socket.id;
-      const [token, roomDoc] = await Promise.all([
-        TokenModel.findOne({ id: data.tokenId, roomId: data.roomId }),
-        RoomModel.findOne({ roomId: data.roomId }),
-      ]);
-      if (!token) return;
-      const isDM = socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
-      const ownerIds = token.ownerIds?.length ? token.ownerIds : [token.ownerId];
-      if (!isDM && !ownerIds.includes(requesterId)) return;
-      await TokenModel.updateOne({ id: data.tokenId }, { width: data.width, height: data.height });
-      io.to(data.roomId).emit('token-resized', { tokenId: data.tokenId, width: data.width, height: data.height });
-    } catch (error) {
-      logger.error(`[TOKEN] Error resizing token ${data.tokenId}:`, error);
+  socket.on(
+    'token-resize',
+    async (data: { roomId: string; tokenId: string; width: number; height: number }) => {
+      try {
+        const requesterId = socket.authenticatedUserId || socket.id;
+        const [token, roomDoc] = await Promise.all([
+          TokenModel.findOne({ id: data.tokenId, roomId: data.roomId }),
+          RoomModel.findOne({ roomId: data.roomId }),
+        ]);
+        if (!token) return;
+        const isDM =
+          socket.authenticatedUserId &&
+          roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+        const ownerIds = token.ownerIds?.length ? token.ownerIds : [token.ownerId];
+        if (!isDM && !ownerIds.includes(requesterId)) return;
+        await TokenModel.updateOne(
+          { id: data.tokenId },
+          { width: data.width, height: data.height }
+        );
+        io.to(data.roomId).emit('token-resized', {
+          tokenId: data.tokenId,
+          width: data.width,
+          height: data.height,
+        });
+      } catch (error) {
+        logger.error(`[TOKEN] Error resizing token ${data.tokenId}:`, error);
+      }
     }
-  });
+  );
 
   socket.on('token-scale', async (data: { roomId: string; scale: number }) => {
     try {
-      await TokenModel.updateMany(
-        { roomId: data.roomId },
-        [{ $set: {
-          x: { $multiply: ['$x', data.scale] },
-          y: { $multiply: ['$y', data.scale] },
-          width: { $multiply: ['$width', data.scale] },
-          height: { $multiply: ['$height', data.scale] },
-        } }]
-      );
+      await TokenModel.updateMany({ roomId: data.roomId }, [
+        {
+          $set: {
+            x: { $multiply: ['$x', data.scale] },
+            y: { $multiply: ['$y', data.scale] },
+            width: { $multiply: ['$width', data.scale] },
+            height: { $multiply: ['$height', data.scale] },
+          },
+        },
+      ]);
       socket.to(data.roomId).emit('token-scale', data);
       logger.info(`[TOKEN] Scaled tokens for room ${data.roomId} by ${data.scale}`);
     } catch (error) {
@@ -505,7 +528,8 @@ io.on('connection', (socket: Socket) => {
         RoomModel.findOne({ roomId: data.roomId }),
       ]);
       if (!token) return;
-      const isDM = socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+      const isDM =
+        socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
       const ownerIds = token.ownerIds?.length ? token.ownerIds : [token.ownerId];
       if (!isDM && !ownerIds.includes(requesterId)) return;
       await TokenModel.deleteOne({ id: data.tokenId });
@@ -516,50 +540,75 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
-  socket.on('token-edit', async (data: { roomId: string; tokenId: string; color: string; label: string }) => {
-    try {
-      const requesterId = socket.authenticatedUserId || socket.id;
-      const [token, roomDoc] = await Promise.all([
-        TokenModel.findOne({ id: data.tokenId, roomId: data.roomId }),
-        RoomModel.findOne({ roomId: data.roomId }),
-      ]);
-      if (!token) return;
-      const isDM = socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
-      const ownerIds = token.ownerIds?.length ? token.ownerIds : [token.ownerId];
-      if (!isDM && !ownerIds.includes(requesterId)) return;
-      await TokenModel.updateOne({ id: data.tokenId }, { color: data.color, label: data.label });
-      io.to(data.roomId).emit('token-edited', { tokenId: data.tokenId, color: data.color, label: data.label });
-      logger.info(`[TOKEN] Edited token ${data.tokenId}`);
-    } catch (error) {
-      logger.error(`[TOKEN] Error editing token ${data.tokenId}:`, error);
+  socket.on(
+    'token-edit',
+    async (data: { roomId: string; tokenId: string; color: string; label: string }) => {
+      try {
+        const requesterId = socket.authenticatedUserId || socket.id;
+        const [token, roomDoc] = await Promise.all([
+          TokenModel.findOne({ id: data.tokenId, roomId: data.roomId }),
+          RoomModel.findOne({ roomId: data.roomId }),
+        ]);
+        if (!token) return;
+        const isDM =
+          socket.authenticatedUserId &&
+          roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+        const ownerIds = token.ownerIds?.length ? token.ownerIds : [token.ownerId];
+        if (!isDM && !ownerIds.includes(requesterId)) return;
+        await TokenModel.updateOne({ id: data.tokenId }, { color: data.color, label: data.label });
+        io.to(data.roomId).emit('token-edited', {
+          tokenId: data.tokenId,
+          color: data.color,
+          label: data.label,
+        });
+        logger.info(`[TOKEN] Edited token ${data.tokenId}`);
+      } catch (error) {
+        logger.error(`[TOKEN] Error editing token ${data.tokenId}:`, error);
+      }
     }
-  });
+  );
 
-  socket.on('token-assign-owners', async (data: { roomId: string; tokenId: string; ownerIds: string[] }) => {
-    try {
-      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
-      const isDM = socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
-      if (!isDM) return;
-      await TokenModel.updateOne({ id: data.tokenId }, { ownerIds: data.ownerIds });
-      io.to(data.roomId).emit('token-owners-updated', { tokenId: data.tokenId, ownerIds: data.ownerIds });
-      logger.info(`[TOKEN] Updated owners for token ${data.tokenId}`);
-    } catch (error) {
-      logger.error(`[TOKEN] Error assigning owners to token ${data.tokenId}:`, error);
+  socket.on(
+    'token-assign-owners',
+    async (data: { roomId: string; tokenId: string; ownerIds: string[] }) => {
+      try {
+        const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
+        const isDM =
+          socket.authenticatedUserId &&
+          roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+        if (!isDM) return;
+        await TokenModel.updateOne({ id: data.tokenId }, { ownerIds: data.ownerIds });
+        io.to(data.roomId).emit('token-owners-updated', {
+          tokenId: data.tokenId,
+          ownerIds: data.ownerIds,
+        });
+        logger.info(`[TOKEN] Updated owners for token ${data.tokenId}`);
+      } catch (error) {
+        logger.error(`[TOKEN] Error assigning owners to token ${data.tokenId}:`, error);
+      }
     }
-  });
+  );
 
-  socket.on('token-toggle-visibility', async (data: { roomId: string; tokenId: string; visible: boolean }) => {
-    try {
-      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
-      const isDM = socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
-      if (!isDM) return;
-      await TokenModel.updateOne({ id: data.tokenId }, { visible: data.visible });
-      io.to(data.roomId).emit('token-visibility-updated', { tokenId: data.tokenId, visible: data.visible });
-      logger.info(`[TOKEN] Set token ${data.tokenId} visibility to ${data.visible}`);
-    } catch (error) {
-      logger.error(`[TOKEN] Error toggling visibility for token ${data.tokenId}:`, error);
+  socket.on(
+    'token-toggle-visibility',
+    async (data: { roomId: string; tokenId: string; visible: boolean }) => {
+      try {
+        const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
+        const isDM =
+          socket.authenticatedUserId &&
+          roomDoc?.createdBy.toString() === socket.authenticatedUserId;
+        if (!isDM) return;
+        await TokenModel.updateOne({ id: data.tokenId }, { visible: data.visible });
+        io.to(data.roomId).emit('token-visibility-updated', {
+          tokenId: data.tokenId,
+          visible: data.visible,
+        });
+        logger.info(`[TOKEN] Set token ${data.tokenId} visibility to ${data.visible}`);
+      } catch (error) {
+        logger.error(`[TOKEN] Error toggling visibility for token ${data.tokenId}:`, error);
+      }
     }
-  });
+  );
 
   socket.on('canvas-scale', async (data: { roomId: string; scaleX: number; scaleY: number }) => {
     try {
@@ -584,15 +633,16 @@ io.on('connection', (socket: Socket) => {
         );
       }
 
-      await TokenModel.updateMany(
-        { roomId: data.roomId },
-        [{ $set: {
-          x: { $multiply: ['$x', data.scaleX] },
-          y: { $multiply: ['$y', data.scaleY] },
-          width: { $multiply: ['$width', data.scaleX] },
-          height: { $multiply: ['$height', data.scaleY] },
-        } }]
-      );
+      await TokenModel.updateMany({ roomId: data.roomId }, [
+        {
+          $set: {
+            x: { $multiply: ['$x', data.scaleX] },
+            y: { $multiply: ['$y', data.scaleY] },
+            width: { $multiply: ['$width', data.scaleX] },
+            height: { $multiply: ['$height', data.scaleY] },
+          },
+        },
+      ]);
 
       // Broadcast to all other clients in the room
       socket.to(data.roomId).emit('canvas-scale', data);
