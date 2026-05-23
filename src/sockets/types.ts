@@ -1,3 +1,7 @@
+import type { DiceRollResult } from './helpers/dice';
+
+export type { DiceRollResult };
+
 export interface RoomUser {
   id: string;
   authenticatedUserId?: string;
@@ -11,6 +15,7 @@ export interface ChatMessage {
   username: string;
   message: string;
   timestamp: Date;
+  diceRoll?: DiceRollResult;
 }
 
 export interface RoomState {

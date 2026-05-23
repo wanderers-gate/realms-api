@@ -1,12 +1,13 @@
 import { type ChatMessageDocument, ChatMessageModel } from '../models/chat-message-model';
+import type { DiceRollResult } from '../sockets/helpers/dice';
 
 export const chatService = {
-  // Save a new message to the database
   async saveMessage(
     roomId: string,
     userId: string,
     username: string,
-    message: string
+    message: string,
+    diceRoll?: DiceRollResult
   ): Promise<ChatMessageDocument> {
     const chatMessage = new ChatMessageModel({
       roomId,
@@ -14,6 +15,7 @@ export const chatService = {
       username,
       message,
       timestamp: new Date(),
+      ...(diceRoll && { diceRoll }),
     });
 
     return await chatMessage.save();

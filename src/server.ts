@@ -92,6 +92,7 @@ io.on('connection', (socket: Socket) => {
         username: msg.username,
         message: msg.message,
         timestamp: msg.timestamp,
+        ...(msg.diceRoll && { diceRoll: msg.diceRoll }),
       }));
     } catch (error) {
       logger.error(`[CHAT] Error loading messages for room ${roomId}:`, error);
