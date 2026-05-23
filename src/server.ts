@@ -4,10 +4,16 @@ import { Server, type Socket } from 'socket.io';
 import config from './config/config';
 import connectDB from './config/database';
 import app from './index';
-import { CanvasModel } from './models/canvas-model';
 import { RoomModel } from './models/room-model';
 import { chatService } from './services/chat.service';
-import type { CanvasOperation, DrawingEvent } from './types/canvas';
+import {
+  loadExistingCanvas,
+  registerCanvasHandlers,
+  savePendingOperations,
+} from './sockets/canvas.handlers';
+import { registerChatHandlers } from './sockets/chat.handlers';
+import { loadTokens, registerTokenHandlers } from './sockets/token.handlers';
+import type { RoomState } from './sockets/types';
 import { verifyJwt } from './utils/jwt';
 import logger from './utils/logger';
 
@@ -18,117 +24,16 @@ declare module 'socket.io' {
   }
 }
 
-const getSocketUsername = (socket: Socket): string => socket.username || 'Unknown User';
-
-const createChatMessage = (
-  socket: Socket,
-  message: string,
-  id: string | number = Date.now(),
-  timestamp: Date = new Date()
-) => ({
-  id: id.toString(),
-  userId: socket.id,
-  username: getSocketUsername(socket),
-  message,
-  timestamp,
-});
-
-const createCanvasOperation = (drawingEvent: DrawingEvent & { id?: string }): CanvasOperation => ({
-  id: drawingEvent.id || `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
-  type: drawingEvent.type,
-  tool: drawingEvent.tool,
-  points: drawingEvent.points,
-  color: drawingEvent.color,
-  size: drawingEvent.size,
-  timestamp: new Date(),
-  userId: drawingEvent.userId,
-});
-
-// Batched canvas saves to prevent infinite loops
-const pendingCanvasOperations: Map<string, CanvasOperation[]> = new Map();
-const canvasSaveTimer: Map<string, NodeJS.Timeout> = new Map();
-
-async function savePendingOperations(roomId: string) {
-  const operations = pendingCanvasOperations.get(roomId);
-  if (!operations || operations.length === 0) return;
-
-  try {
-    // Get the room to find the creator ObjectId (needed for new canvas)
-    const room = await RoomModel.findOne({ roomId });
-    if (!room) {
-      logger.error(`[CANVAS] Room not found for batch save: ${roomId}`);
-      return;
-    }
-
-    // Try to add all pending operations at once
-    const result = await CanvasModel.findOneAndUpdate(
-      { roomId },
-      { $push: { operations: { $each: operations } } },
-      { new: true }
-    );
-
-    if (result) {
-      logger.info(`[CANVAS] Batch saved ${operations.length} operations for room ${roomId}`);
-    } else {
-      // Canvas doesn't exist, create it with all pending operations
-      const newCanvas = new CanvasModel({
-        roomId,
-        operations,
-        createdBy: room.createdBy,
-      });
-      await newCanvas.save();
-      logger.info(
-        `[CANVAS] Created new canvas with ${operations.length} operations for room ${roomId}`
-      );
-    }
-
-    // Clear pending operations after successful save
-    pendingCanvasOperations.delete(roomId);
-  } catch (error) {
-    logger.error(`[CANVAS] Error in batch save for room ${roomId}:`, error);
-    // Keep the operations for retry, but limit the size to prevent memory issues
-    const currentOps = pendingCanvasOperations.get(roomId) || [];
-    if (currentOps.length > 1000) {
-      // If too many operations failed, keep only the last 100
-      pendingCanvasOperations.set(roomId, currentOps.slice(-100));
-      logger.warn(
-        `[CANVAS] Trimmed pending operations for room ${roomId} due to repeated failures`
-      );
-    }
-  }
-}
-
-async function loadExistingCanvas(roomId: string) {
-  try {
-    const canvas = await CanvasModel.findOne({ roomId });
-
-    if (canvas && canvas.operations.length > 0) {
-      logger.info(`[CANVAS] Loaded ${canvas.operations.length} operations for room ${roomId}`);
-      return canvas.operations;
-    }
-    return [];
-  } catch (error) {
-    logger.error(`[CANVAS] Error loading canvas for room ${roomId}:`, error);
-    return [];
-  }
-}
-
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: [
-      'http://localhost:5173',
-      'http://localhost:3000',
-      'http://localhost:8080',
-      'http://realmsapp.io',
-      'https://realmsapp.io',
-    ],
+    origin: config.allowedOrigins,
     methods: ['GET', 'POST'],
   },
 });
 
-const rooms = new Map();
-const userRooms = new Map();
+const rooms = new Map<string, RoomState>();
+const userRooms = new Map<string, string>();
 
 let server: ReturnType<typeof httpServer.listen>;
 
@@ -143,6 +48,10 @@ io.on('connection', (socket: Socket) => {
       socket.authenticatedUserId = decoded.userId;
     }
   }
+
+  registerCanvasHandlers(socket, io);
+  registerTokenHandlers(socket, io);
+  registerChatHandlers(socket, io, rooms, userRooms);
 
   socket.on('join-room', async (roomId: string, username: string) => {
     const previousRoom = userRooms.get(socket.id);
@@ -189,8 +98,11 @@ io.on('connection', (socket: Socket) => {
       room.messages = [];
     }
 
-    const existingCanvas = await loadExistingCanvas(roomId);
-    const roomDoc = await RoomModel.findOne({ roomId });
+    const [existingCanvas, existingTokens, roomDoc] = await Promise.all([
+      loadExistingCanvas(roomId),
+      loadTokens(roomId),
+      RoomModel.findOne({ roomId }),
+    ]);
     const userPermissions = roomDoc?.userPermissions || [];
 
     socket.emit('room-joined', {
@@ -199,192 +111,13 @@ io.on('connection', (socket: Socket) => {
       recentMessages: room.messages,
       canvasOperations: existingCanvas,
       userPermissions,
+      tokens: existingTokens,
     });
 
     socket.to(roomId).emit('user-joined', { userId: socket.id, username });
     updateRoomUserList(roomId);
   });
 
-  socket.on('send-message', async (message: string) => {
-    const roomId = userRooms.get(socket.id);
-    if (!roomId) return;
-
-    try {
-      const savedMessage = await chatService.saveMessage(
-        roomId,
-        socket.id,
-        getSocketUsername(socket),
-        message
-      );
-
-      const chatMessage = createChatMessage(
-        socket,
-        message,
-        savedMessage._id.toString(),
-        savedMessage.timestamp
-      );
-
-      const room = rooms.get(roomId);
-      if (room) {
-        room.messages.push(chatMessage);
-        if (room.messages.length > 100) {
-          room.messages = room.messages.slice(-100);
-        }
-      }
-
-      io.to(roomId).emit('new-message', chatMessage);
-
-      if (room && room.messages.length % 10 === 0) {
-        chatService.cleanupOldMessages(roomId, 1000).catch((error) => {
-          logger.error(`[CHAT] Error cleaning up old messages for room ${roomId}:`, error);
-        });
-      }
-    } catch (error) {
-      logger.error('[CHAT] Error saving message to database:', error);
-      // Still broadcast even if db save fails
-      io.to(roomId).emit('new-message', createChatMessage(socket, message));
-    }
-  });
-
-  socket.on('canvas-draw', async (drawingEvent: DrawingEvent & { id?: string }) => {
-    // Always use server-verified userId, not client-provided
-    const effectiveUserId = socket.authenticatedUserId || socket.id;
-    const operation = createCanvasOperation({ ...drawingEvent, userId: effectiveUserId });
-
-    // Broadcast to all users in the room (except sender) - FAST!
-    const broadcastEvent = {
-      ...drawingEvent,
-      operationId: operation.id,
-      timestamp: operation.timestamp,
-    };
-
-    socket.to(drawingEvent.roomId).emit('canvas-draw', broadcastEvent);
-
-    // Only save operations that have an ID (completion events, not real-time pen segments)
-    if (drawingEvent.id) {
-      const existingOps = pendingCanvasOperations.get(drawingEvent.roomId) || [];
-      existingOps.push(operation);
-      pendingCanvasOperations.set(drawingEvent.roomId, existingOps);
-
-      const existingTimer = canvasSaveTimer.get(drawingEvent.roomId);
-      if (existingTimer) clearTimeout(existingTimer);
-
-      const timer = setTimeout(() => {
-        canvasSaveTimer.delete(drawingEvent.roomId);
-        savePendingOperations(drawingEvent.roomId);
-      }, 2000);
-
-      canvasSaveTimer.set(drawingEvent.roomId, timer);
-    }
-  });
-
-  socket.on('canvas-undo', async (roomId: string) => {
-    logger.info(`[CANVAS] Received undo event from ${socket.id} in room ${roomId}`);
-
-    try {
-      const canvas = await CanvasModel.findOne({ roomId });
-      if (canvas && canvas.operations.length > 0) {
-        canvas.operations.pop(); // Remove last operation
-        await canvas.save();
-        logger.info(`[CANVAS] Undid last operation for room ${roomId}`);
-      }
-
-      // Broadcast undo event to all users in the room (except sender)
-      socket.to(roomId).emit('canvas-undo', roomId);
-    } catch (error) {
-      logger.error(`[CANVAS] Error undoing operation for room ${roomId}:`, error);
-    }
-  });
-
-  socket.on('canvas-delete', async (data: { roomId: string; operationIds: string[] }) => {
-    logger.info(
-      `[CANVAS] Received delete event from ${socket.id} in room ${data.roomId} for ${data.operationIds.length} operations`
-    );
-
-    try {
-      await savePendingOperations(data.roomId);
-
-      const requesterUserId = socket.authenticatedUserId || socket.id;
-      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
-      const isRoomCreator =
-        socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
-      const hasModifyPermission = roomDoc?.userPermissions.some(
-        (p) => p.userId === requesterUserId && p.canModifyDrawings
-      );
-
-      const canvas = await CanvasModel.findOne({ roomId: data.roomId });
-      if (canvas) {
-        const allowedIds = new Set(
-          canvas.operations
-            .filter((op) => data.operationIds.includes(op.id))
-            .filter((op) => isRoomCreator || hasModifyPermission || op.userId === requesterUserId)
-            .map((op) => op.id)
-        );
-
-        if (allowedIds.size === 0) return;
-
-        const initialCount = canvas.operations.length;
-        canvas.operations = canvas.operations.filter((op) => !allowedIds.has(op.id));
-        const deletedCount = initialCount - canvas.operations.length;
-
-        await canvas.save();
-        logger.info(`[CANVAS] Deleted ${deletedCount} operations for room ${data.roomId}`);
-
-        socket.to(data.roomId).emit('canvas-delete', {
-          roomId: data.roomId,
-          operationIds: Array.from(allowedIds),
-          deletedCount,
-        });
-      }
-    } catch (error) {
-      logger.error(`[CANVAS] Error deleting canvas operations for room ${data.roomId}:`, error);
-    }
-  });
-
-  socket.on('grid-settings-update', async (data: { roomId: string; gridSettings: unknown }) => {
-    try {
-      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
-      if (!roomDoc) return;
-      const isDM =
-        socket.authenticatedUserId && roomDoc.createdBy.toString() === socket.authenticatedUserId;
-      if (!isDM) return;
-      socket.to(data.roomId).emit('grid-settings-update', data);
-    } catch (error) {
-      logger.error(`[GRID] Error broadcasting grid settings for room ${data.roomId}:`, error);
-    }
-  });
-
-  socket.on('canvas-scale', async (data: { roomId: string; scaleX: number; scaleY: number }) => {
-    try {
-      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
-      if (!roomDoc) return;
-      const isDM =
-        socket.authenticatedUserId && roomDoc.createdBy.toString() === socket.authenticatedUserId;
-      if (!isDM) return;
-
-      // Flush any pending operations before scaling so nothing is missed
-      await savePendingOperations(data.roomId);
-
-      const canvas = await CanvasModel.findOne({ roomId: data.roomId });
-      if (canvas && canvas.operations.length > 0) {
-        for (const op of canvas.operations) {
-          op.points = op.points.map((p) => ({ x: p.x * data.scaleX, y: p.y * data.scaleY }));
-        }
-        canvas.markModified('operations');
-        await canvas.save();
-        logger.info(
-          `[CANVAS] Scaled ${canvas.operations.length} operations for room ${data.roomId} by (${data.scaleX}, ${data.scaleY})`
-        );
-      }
-
-      // Broadcast to all other clients in the room
-      socket.to(data.roomId).emit('canvas-scale', data);
-    } catch (error) {
-      logger.error(`[CANVAS] Error scaling canvas operations for room ${data.roomId}:`, error);
-    }
-  });
-
-  // Handle permission updates (DM only)
   socket.on(
     'update-permissions',
     async (data: { roomId: string; targetUserId: string; canModifyDrawings: boolean }) => {
@@ -434,7 +167,6 @@ io.on('connection', (socket: Socket) => {
       const room = rooms.get(roomId);
       if (room) {
         room.users.delete(socket.id);
-
         if (room.users.size === 0) {
           rooms.delete(roomId);
           logger.info(`Room ${roomId} deleted (empty)`);
@@ -442,18 +174,13 @@ io.on('connection', (socket: Socket) => {
           updateRoomUserList(roomId);
         }
       }
-
-      socket.to(roomId).emit('user-left', {
-        userId: socket.id,
-        username: socket.username,
-      });
+      socket.to(roomId).emit('user-left', { userId: socket.id, username: socket.username });
     }
-
     userRooms.delete(socket.id);
     logger.info(`User disconnected: ${socket.id}`);
   });
 
-  function updateRoomUserList(roomId: string) {
+  function updateRoomUserList(roomId: string): void {
     const room = rooms.get(roomId);
     if (room) {
       io.to(roomId).emit('user-list-updated', Array.from(room.users.values()));
@@ -484,7 +211,6 @@ const shutdown = async (): Promise<void> => {
   process.exit(0);
 };
 
-// Handle graceful shutdown
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
