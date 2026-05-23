@@ -12,6 +12,7 @@ import {
   savePendingOperations,
 } from './sockets/canvas.handlers';
 import { registerChatHandlers } from './sockets/chat.handlers';
+import { normalizeDiceRoll } from './sockets/helpers/dice';
 import { loadTokens, registerTokenHandlers } from './sockets/token.handlers';
 import type { RoomState } from './sockets/types';
 import { verifyJwt } from './utils/jwt';
@@ -92,7 +93,7 @@ io.on('connection', (socket: Socket) => {
         username: msg.username,
         message: msg.message,
         timestamp: msg.timestamp,
-        ...(msg.diceRoll && { diceRoll: msg.diceRoll }),
+        ...(msg.diceRoll && { diceRoll: normalizeDiceRoll(msg.diceRoll as Record<string, unknown>) }),
       }));
     } catch (error) {
       logger.error(`[CHAT] Error loading messages for room ${roomId}:`, error);

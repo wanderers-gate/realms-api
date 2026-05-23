@@ -1,14 +1,20 @@
-export type DiceRollResult = {
+export type DiceGroup = {
   notation: string;
+  sides: number;
   dice: number[];
   keptIndices: number[];
+  keepMode?: 'kh' | 'kl';
+};
+
+export type DiceRollResult = {
+  notation: string;
+  groups: DiceGroup[];
   modifier: number;
   total: number;
   advantage?: 'advantage' | 'disadvantage';
 };
 
 const VALID_DIE_SIZES = [2, 4, 6, 8, 10, 12, 20, 100];
-const NOTATION_PATTERN = /^(\d+)d(\d+)(?:(kh|kl)(\d+)?)?([+-]\d+)?$/i;
 
 function rollDie(sides: number): number {
   return Math.floor(Math.random() * sides) + 1;
@@ -21,43 +27,89 @@ function resolveShorthand(input: string): string {
   return input;
 }
 
+function extractModifier(notation: string): number {
+  const withoutGroups = notation.replace(/\d+d\d+(?:(?:kh|kl)\d*)?/gi, '');
+  const cleaned = withoutGroups.replace(/\++/g, '+').replace(/^[+]/, '').replace(/[+]$/, '').trim();
+  if (!cleaned) return 0;
+  const match = cleaned.match(/^([+-]?\d+)$/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+export function normalizeDiceRoll(raw: Record<string, unknown>): DiceRollResult {
+  if (Array.isArray(raw.groups)) return raw as unknown as DiceRollResult;
+
+  const sidesMatch = (raw.notation as string)?.match(/d(\d+)/);
+  const sides = sidesMatch ? parseInt(sidesMatch[1], 10) : 0;
+  const groupNotation = (raw.notation as string)?.replace(/[+-]\d+$/, '') ?? '';
+
+  return {
+    notation: (raw.notation as string) ?? '',
+    groups: [{
+      notation: groupNotation,
+      sides,
+      dice: (raw.dice as number[]) ?? [],
+      keptIndices: (raw.keptIndices as number[]) ?? [],
+      keepMode: raw.advantage === 'advantage' ? 'kh' : raw.advantage === 'disadvantage' ? 'kl' : undefined,
+    }],
+    modifier: (raw.modifier as number) ?? 0,
+    total: (raw.total as number) ?? 0,
+    advantage: raw.advantage as DiceRollResult['advantage'],
+  };
+}
+
 export function parseAndRoll(rawInput: string): DiceRollResult | null {
   const input = resolveShorthand(rawInput.trim());
-  const match = input.match(NOTATION_PATTERN);
-  if (!match) return null;
 
-  const count = parseInt(match[1], 10);
-  const sides = parseInt(match[2], 10);
-  const keepMode = match[3]?.toLowerCase() as 'kh' | 'kl' | undefined;
-  const keepCount = keepMode ? (match[4] ? parseInt(match[4], 10) : 1) : null;
-  const modifier = match[5] ? parseInt(match[5], 10) : 0;
+  const groupMatches = [...input.matchAll(/(\d+)d(\d+)(?:(kh|kl)(\d+)?)?/gi)];
+  if (groupMatches.length === 0) return null;
 
-  if (!VALID_DIE_SIZES.includes(sides) || count < 1 || count > 100) return null;
+  const modifier = extractModifier(input);
+  const groups: DiceGroup[] = [];
+  const notationParts: string[] = [];
 
-  const dice = Array.from({ length: count }, () => rollDie(sides));
+  for (const match of groupMatches) {
+    const count = parseInt(match[1], 10);
+    const sides = parseInt(match[2], 10);
+    const keepMode = match[3]?.toLowerCase() as 'kh' | 'kl' | undefined;
+    const keepCount = match[4] ? parseInt(match[4], 10) : 1;
 
-  let keptIndices: number[];
-  let advantage: 'advantage' | 'disadvantage' | undefined;
+    if (!VALID_DIE_SIZES.includes(sides) || count < 1 || count > 100) return null;
 
-  if (keepMode && keepCount !== null) {
-    const sorted = dice.map((val, i) => ({ val, i })).sort((a, b) => b.val - a.val);
-    keptIndices =
-      keepMode === 'kh'
-        ? sorted.slice(0, keepCount).map((d) => d.i)
-        : sorted.slice(sorted.length - keepCount).map((d) => d.i);
-    if (count === 2 && sides === 20 && keepCount === 1) {
-      advantage = keepMode === 'kh' ? 'advantage' : 'disadvantage';
+    const dice = Array.from({ length: count }, () => rollDie(sides));
+
+    let keptIndices: number[];
+    if (keepMode) {
+      const sorted = dice.map((val, i) => ({ val, i })).sort((a, b) => b.val - a.val);
+      keptIndices =
+        keepMode === 'kh'
+          ? sorted.slice(0, keepCount).map((d) => d.i)
+          : sorted.slice(sorted.length - keepCount).map((d) => d.i);
+    } else {
+      keptIndices = dice.map((_, i) => i);
     }
-  } else {
-    keptIndices = dice.map((_, i) => i);
+
+    let groupNotation = `${count}d${sides}`;
+    if (keepMode) groupNotation += `${keepMode}${keepCount}`;
+
+    groups.push({ notation: groupNotation, sides, dice, keptIndices, keepMode });
+    notationParts.push(groupNotation);
   }
 
-  const total = keptIndices.map((i) => dice[i]).reduce((sum, d) => sum + d, 0) + modifier;
-
-  let notation = `${count}d${sides}`;
-  if (keepMode && keepCount !== null) notation += `${keepMode}${keepCount}`;
+  let notation = notationParts.join('+');
   if (modifier > 0) notation += `+${modifier}`;
   else if (modifier < 0) notation += `${modifier}`;
 
-  return { notation, dice, keptIndices, modifier, total, advantage };
+  const total =
+    groups.reduce((sum, g) => sum + g.keptIndices.map((i) => g.dice[i]).reduce((s, d) => s + d, 0), 0) +
+    modifier;
+
+  let advantage: 'advantage' | 'disadvantage' | undefined;
+  if (groups.length === 1) {
+    const g = groups[0];
+    if (g.sides === 20 && g.dice.length === 2 && g.keptIndices.length === 1 && g.keepMode) {
+      advantage = g.keepMode === 'kh' ? 'advantage' : 'disadvantage';
+    }
+  }
+
+  return { notation, groups, modifier, total, advantage };
 }
