@@ -38,18 +38,22 @@ function extractModifier(notation: string): number {
 export function normalizeDiceRoll(raw: Record<string, unknown>): DiceRollResult {
   if (Array.isArray(raw.groups)) return raw as unknown as DiceRollResult;
 
-  const sidesMatch = (raw.notation as string)?.match(/d(\d+)/);
+  const notation = (raw.notation as string) ?? '';
+  const sidesMatch = notation.match(/d(\d+)/);
   const sides = sidesMatch ? parseInt(sidesMatch[1], 10) : 0;
-  const groupNotation = (raw.notation as string)?.replace(/[+-]\d+$/, '') ?? '';
+  const keepMode =
+    raw.advantage === 'advantage' ? 'kh' :
+    raw.advantage === 'disadvantage' ? 'kl' :
+    undefined;
 
   return {
-    notation: (raw.notation as string) ?? '',
+    notation,
     groups: [{
-      notation: groupNotation,
+      notation: notation.replace(/[+-]\d+$/, ''),
       sides,
       dice: (raw.dice as number[]) ?? [],
       keptIndices: (raw.keptIndices as number[]) ?? [],
-      keepMode: raw.advantage === 'advantage' ? 'kh' : raw.advantage === 'disadvantage' ? 'kl' : undefined,
+      keepMode,
     }],
     modifier: (raw.modifier as number) ?? 0,
     total: (raw.total as number) ?? 0,
