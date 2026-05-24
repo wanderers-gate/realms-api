@@ -1,7 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import { chatService } from '../services/chat.service';
 import logger from '../utils/logger';
-import { parseAndRoll } from './helpers/dice';
+import { normalizeDiceRoll, parseAndRoll } from './helpers/dice';
 import type { RoomState } from './types';
 
 export function registerChatHandlers(
@@ -10,6 +10,40 @@ export function registerChatHandlers(
   rooms: Map<string, RoomState>,
   userRooms: Map<string, string>
 ): void {
+  socket.on(
+    'load-more-messages',
+    async ({ before, limit = 50 }: { before: string; limit?: number }) => {
+      const roomId = userRooms.get(socket.id);
+      if (!roomId) return;
+
+      try {
+        const older = await chatService.getMessagesBefore(roomId, before, limit);
+        const messages = older.map((msg) => {
+          const base = {
+            id: msg._id.toString(),
+            userId: msg.userId,
+            username: msg.username,
+            message: msg.message,
+            timestamp: msg.timestamp,
+          };
+          if (!msg.diceRoll) return base;
+          try {
+            return {
+              ...base,
+              diceRoll: normalizeDiceRoll(msg.diceRoll as Record<string, unknown>),
+            };
+          } catch {
+            return base;
+          }
+        });
+        socket.emit('more-messages', { messages, hasMore: older.length === limit });
+      } catch (error) {
+        logger.error('[CHAT] Error loading more messages:', error);
+        socket.emit('more-messages', { messages: [], hasMore: false });
+      }
+    }
+  );
+
   socket.on('send-message', async (message: string) => {
     const roomId = userRooms.get(socket.id);
     if (!roomId) return;
