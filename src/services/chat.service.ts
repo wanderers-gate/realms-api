@@ -22,6 +22,21 @@ export const chatService = {
   },
 
   // Get recent messages for a room (last 50 messages)
+  async getMessagesBefore(
+    roomId: string,
+    beforeId: string,
+    limit = 50
+  ): Promise<ChatMessageDocument[]> {
+    const messages = await ChatMessageModel.find({
+      roomId,
+      _id: { $lt: beforeId },
+    })
+      .sort({ _id: -1 })
+      .limit(limit)
+      .lean();
+    return messages.reverse() as unknown as ChatMessageDocument[];
+  },
+
   async getRecentMessages(roomId: string, limit = 50): Promise<ChatMessageDocument[]> {
     const messages = await ChatMessageModel.find({ roomId })
       .sort({ timestamp: -1 })
