@@ -1,12 +1,14 @@
 import mongoose, { type Document, type Types } from 'mongoose';
+import type { DiceRollResult } from '../sockets/helpers/dice';
 
 export interface ChatMessage {
   _id: Types.ObjectId;
-  roomId: string; // Reference to the room
-  userId: string; // Socket ID or user ID
+  roomId: string;
+  userId: string;
   username: string;
   message: string;
   timestamp: Date;
+  diceRoll?: DiceRollResult;
 }
 
 export type ChatMessageDocument = Document & ChatMessage;
@@ -32,7 +34,11 @@ const chatMessageSchema = new mongoose.Schema<ChatMessageDocument>(
       type: String,
       required: true,
       trim: true,
-      maxlength: 1000, // Reasonable message length limit
+      maxlength: 1000,
+    },
+    diceRoll: {
+      type: mongoose.Schema.Types.Mixed,
+      required: false,
     },
     timestamp: {
       type: Date,

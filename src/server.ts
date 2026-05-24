@@ -12,6 +12,7 @@ import {
   savePendingOperations,
 } from './sockets/canvas.handlers';
 import { registerChatHandlers } from './sockets/chat.handlers';
+import { normalizeDiceRoll } from './sockets/helpers/dice';
 import { loadTokens, registerTokenHandlers } from './sockets/token.handlers';
 import type { RoomState } from './sockets/types';
 import { verifyJwt } from './utils/jwt';
@@ -86,13 +87,21 @@ io.on('connection', (socket: Socket) => {
 
     try {
       const recentMessages = await chatService.getRecentMessages(roomId, 50);
-      room.messages = recentMessages.map((msg) => ({
-        id: msg._id.toString(),
-        userId: msg.userId,
-        username: msg.username,
-        message: msg.message,
-        timestamp: msg.timestamp,
-      }));
+      room.messages = recentMessages.map((msg) => {
+        const base = {
+          id: msg._id.toString(),
+          userId: msg.userId,
+          username: msg.username,
+          message: msg.message,
+          timestamp: msg.timestamp,
+        };
+        if (!msg.diceRoll) return base;
+        try {
+          return { ...base, diceRoll: normalizeDiceRoll(msg.diceRoll as Record<string, unknown>) };
+        } catch {
+          return base;
+        }
+      });
     } catch (error) {
       logger.error(`[CHAT] Error loading messages for room ${roomId}:`, error);
       room.messages = [];

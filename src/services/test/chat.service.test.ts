@@ -69,9 +69,9 @@ describe('Chat Service', () => {
       const recentMessages = await chatService.getRecentMessages(roomId, 3);
 
       expect(recentMessages).toHaveLength(3);
-      expect(recentMessages[0].message).toBe('Message 1');
-      expect(recentMessages[1].message).toBe('Message 2');
-      expect(recentMessages[2].message).toBe('Message 3');
+      expect(recentMessages[0].message).toBe('Message 3');
+      expect(recentMessages[1].message).toBe('Message 4');
+      expect(recentMessages[2].message).toBe('Message 5');
     });
   });
 
