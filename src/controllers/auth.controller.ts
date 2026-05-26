@@ -1,5 +1,8 @@
+import * as argon2 from 'argon2';
+import { eq } from 'drizzle-orm';
 import type { Request, Response } from 'express';
-import { UserModel } from '../models/user-model';
+import { db } from '../db';
+import { users } from '../db/schema';
 import { serializeUser } from '../serializers/user.serializer';
 import { generateToken } from '../utils/jwt';
 import logger from '../utils/logger';
@@ -30,30 +33,35 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const existingUser = await UserModel.findOne({ email });
-    if (existingUser) {
+    const existing = await db.query.users.findFirst({
+      where: eq(users.email, email.toLowerCase()),
+    });
+    if (existing) {
       res.jsonApiError(400, [
-        {
-          status: '400',
-          title: 'Bad Request',
-          detail: 'User already exists',
-        },
+        { status: '400', title: 'Bad Request', detail: 'User already exists' },
       ]);
       return;
     }
 
-    const user = new UserModel({
-      email,
-      password,
-      firstName,
-      lastName,
-      displayName: displayName ? displayName.trim() : undefined,
+    const hashedPassword = await argon2.hash(password, {
+      type: argon2.argon2id,
+      memoryCost: 2 ** 16,
+      timeCost: 3,
+      parallelism: 1,
     });
 
-    await user.save();
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: email.toLowerCase(),
+        password: hashedPassword,
+        firstName,
+        lastName,
+        displayName: displayName ? displayName.trim() : null,
+      })
+      .returning();
 
-    const token = generateToken(user._id.toString(), user.tokenVersion);
-
+    const token = generateToken(user.id, user.tokenVersion);
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -84,7 +92,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const user = await UserModel.findOne({ email });
+    const user = await db.query.users.findFirst({ where: eq(users.email, email.toLowerCase()) });
     if (!user) {
       logger.error('[LOGIN] Failed - user not found', { email });
       res.jsonApiError(401, [
@@ -93,7 +101,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const isValid = await user.comparePassword(password);
+    const isValid = await argon2.verify(user.password, password);
     if (!isValid) {
       logger.error('[LOGIN] Failed - invalid password', { email });
       res.jsonApiError(401, [
@@ -102,10 +110,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    user.tokenVersion += 1;
-    await user.save();
+    const newTokenVersion = user.tokenVersion + 1;
+    await db.update(users).set({ tokenVersion: newTokenVersion }).where(eq(users.id, user.id));
 
-    const token = generateToken(user._id.toString(), user.tokenVersion);
+    const token = generateToken(user.id, newTokenVersion);
     res.cookie('token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -139,7 +147,6 @@ export const logout = (_req: Request, res: Response): void => {
 export const getCurrentUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const user = req.user;
-
     if (!user) {
       res.jsonApiError(401, [
         { status: '401', title: 'Unauthorized', detail: 'User not found in request' },
@@ -148,7 +155,7 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
     }
 
     res.status(200).json({
-      id: user._id.toString(),
+      id: user.id,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,

@@ -1,5 +1,10 @@
-import { type ChatMessageDocument, ChatMessageModel } from '../models/chat-message-model';
+import { and, desc, eq, lt } from 'drizzle-orm';
+import type { InferSelectModel } from 'drizzle-orm';
+import { db } from '../db';
+import { chatMessages } from '../db/schema';
 import type { DiceRollResult } from '../sockets/helpers/dice';
+
+export type ChatMessage = InferSelectModel<typeof chatMessages>;
 
 export const chatService = {
   async saveMessage(
@@ -8,54 +13,44 @@ export const chatService = {
     username: string,
     message: string,
     diceRoll?: DiceRollResult
-  ): Promise<ChatMessageDocument> {
-    const chatMessage = new ChatMessageModel({
+  ): Promise<ChatMessage> {
+    const [msg] = await db.insert(chatMessages).values({
       roomId,
       userId,
       username,
       message,
-      timestamp: new Date(),
-      ...(diceRoll && { diceRoll }),
-    });
-
-    return await chatMessage.save();
+      diceRoll: diceRoll ?? null,
+    }).returning();
+    return msg;
   },
 
-  // Get recent messages for a room (last 50 messages)
   async getMessagesBefore(
     roomId: string,
     beforeId: string,
     limit = 50
-  ): Promise<ChatMessageDocument[]> {
-    const messages = await ChatMessageModel.find({
-      roomId,
-      _id: { $lt: beforeId },
-    })
-      .sort({ _id: -1 })
-      .limit(limit)
-      .lean();
-    return messages.reverse() as unknown as ChatMessageDocument[];
+  ): Promise<ChatMessage[]> {
+    const ref = await db.query.chatMessages.findFirst({
+      where: eq(chatMessages.id, beforeId),
+    });
+    if (!ref?.timestamp) return [];
+
+    const messages = await db.select()
+      .from(chatMessages)
+      .where(and(eq(chatMessages.roomId, roomId), lt(chatMessages.timestamp, ref.timestamp)))
+      .orderBy(desc(chatMessages.timestamp))
+      .limit(limit);
+
+    return messages.reverse();
   },
 
-  async getRecentMessages(roomId: string, limit = 50): Promise<ChatMessageDocument[]> {
-    const messages = await ChatMessageModel.find({ roomId })
-      .sort({ timestamp: -1 })
-      .limit(limit)
-      .lean();
-    return messages.reverse() as unknown as ChatMessageDocument[];
+  async getRecentMessages(roomId: string, limit = 50): Promise<ChatMessage[]> {
+    const messages = await db.select()
+      .from(chatMessages)
+      .where(eq(chatMessages.roomId, roomId))
+      .orderBy(desc(chatMessages.timestamp))
+      .limit(limit);
+
+    return messages.reverse();
   },
 
-  // Clean up old messages (keep only last 1000 messages per room)
-  async cleanupOldMessages(roomId: string, keepCount = 1000): Promise<void> {
-    const messages = await ChatMessageModel.find({ roomId })
-      .sort({ timestamp: -1 })
-      .limit(keepCount + 100); // Get a few extra to be safe
-
-    if (messages.length > keepCount) {
-      const messagesToDelete = messages.slice(keepCount);
-      const messageIds = messagesToDelete.map((msg) => msg._id);
-
-      await ChatMessageModel.deleteMany({ _id: { $in: messageIds } });
-    }
-  },
 };

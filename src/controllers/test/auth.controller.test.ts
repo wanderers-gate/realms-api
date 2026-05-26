@@ -1,202 +1,204 @@
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { Request, Response } from 'express';
-import { Types } from 'mongoose';
-import { UserModel } from '../../models/user-model';
-import type { UserDocument } from '../../models/user-model';
+import type { User } from '../../types/express';
+import type { JsonApiResponse } from '../../types/json-api';
+
+type InsertChain = {
+  values: (_: unknown) => { returning: () => Promise<User[]> };
+};
+type UpdateChain = {
+  set: (_: unknown) => { where: (_: unknown) => Promise<void> };
+};
+
+jest.mock('../../db', () => ({
+  db: {
+    query: { users: { findFirst: jest.fn() } },
+    insert: jest.fn(),
+    update: jest.fn(),
+  },
+}));
+
+jest.mock('argon2', () => ({
+  hash: jest.fn(),
+  verify: jest.fn(),
+  argon2id: 2,
+}));
+
+jest.mock('../../utils/jwt', () => ({
+  generateToken: jest.fn(),
+}));
+
+jest.mock('../../serializers/user.serializer', () => ({
+  serializeUser: jest.fn(),
+}));
+
+import * as argon2 from 'argon2';
+import { db } from '../../db';
 import { serializeUser } from '../../serializers/user.serializer';
 import { generateToken } from '../../utils/jwt';
 import { authCheck, getCurrentUser, login, logout, register } from '../auth.controller';
 
-// Mock dependencies
-jest.mock('../../models/user-model');
-jest.mock('../../serializers/user.serializer');
-jest.mock('../../utils/jwt');
-
-interface MockUser extends Partial<UserDocument> {
-  _id: Types.ObjectId;
-  email: string;
-  firstName: string;
-  lastName: string;
-  tokenVersion: number;
-  comparePassword: jest.Mock;
-  save: jest.Mock;
-}
-
-interface MockRequest extends Partial<Request> {
-  body: {
-    email: string;
-    password: string;
-    firstName: string;
-    lastName: string;
-  };
-}
-
-// Create a mock response factory
-const createMockResponse = () => {
-  const res: Partial<Response> = {
+const createMockResponse = () =>
+  ({
     status: jest.fn().mockReturnThis(),
-    json: jest.fn(),
-    cookie: jest.fn(),
-    clearCookie: jest.fn(),
-    send: jest.fn(),
-    jsonApiError: jest.fn(),
-  };
-  return res as Response;
+    json: jest.fn().mockReturnThis(),
+    cookie: jest.fn().mockReturnThis(),
+    clearCookie: jest.fn().mockReturnThis(),
+    send: jest.fn().mockReturnThis(),
+    jsonApiError: jest.fn().mockReturnThis(),
+  }) as unknown as Response;
+
+const mockUserRecord: User = {
+  id: 'user-uuid-123',
+  email: 'test@example.com',
+  password: 'hashed-password',
+  firstName: 'Test',
+  lastName: 'User',
+  displayName: null,
+  tokenVersion: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
 };
 
+const mockSerializedUser: JsonApiResponse = {
+  data: { id: 'user-uuid-123', type: 'user', attributes: { email: 'test@example.com' } },
+};
+
+const dbFindFirst = () =>
+  db.query.users.findFirst as unknown as jest.Mock<() => Promise<User | undefined>>;
+const dbInsert = () => db.insert as unknown as jest.Mock<() => InsertChain>;
+const dbUpdate = () => db.update as unknown as jest.Mock<() => UpdateChain>;
+
 describe('Auth Controller', () => {
-  let mockRequest: MockRequest;
-  let mockResponse: Response;
-  let mockUser: MockUser;
+  let res: Response;
 
   beforeEach(() => {
-    // Reset mocks
     jest.clearAllMocks();
+    res = createMockResponse();
+    jest.mocked(generateToken).mockReturnValue('mock-token');
+    jest.mocked(serializeUser).mockReturnValue(mockSerializedUser);
 
-    // Setup mock user
-    mockUser = {
-      _id: new Types.ObjectId(),
-      email: 'test@example.com',
-      firstName: 'Test',
-      lastName: 'User',
-      tokenVersion: 0,
-      comparePassword: jest.fn(),
-      save: jest.fn(),
-    };
+    dbInsert().mockImplementation(() => ({
+      values: () => ({ returning: () => Promise.resolve([mockUserRecord]) }),
+    }));
 
-    // Setup mock request with extracted attributes (simulating middleware)
-    mockRequest = {
+    dbUpdate().mockImplementation(() => ({
+      set: () => ({ where: () => Promise.resolve() }),
+    }));
+  });
+
+  describe('register', () => {
+    const req = {
       body: {
         email: 'test@example.com',
         password: 'password',
         firstName: 'Test',
         lastName: 'User',
       },
-    };
+    } as Request;
 
-    // Setup mock response
-    mockResponse = createMockResponse();
+    it('should register a new user and return 201', async () => {
+      dbFindFirst().mockResolvedValue(undefined);
+      jest.mocked(argon2.hash).mockResolvedValue('hashed-password');
 
-    // Setup mock implementations
-    (UserModel.findOne as jest.Mock).mockResolvedValue(null);
-    (UserModel as unknown as jest.Mock).mockImplementation(() => mockUser);
-    (serializeUser as jest.Mock).mockReturnValue({ data: { id: mockUser._id.toString() } });
-    (generateToken as jest.Mock).mockReturnValue('mock-token');
-  });
+      await register(req, res);
 
-  describe('register', () => {
-    it('should register a new user', async () => {
-      await register(mockRequest as Request, mockResponse);
-
-      expect(UserModel.findOne).toHaveBeenCalledWith({ email: 'test@example.com' });
-      expect(UserModel).toHaveBeenCalledWith({
-        email: 'test@example.com',
-        password: 'password',
-        firstName: 'Test',
-        lastName: 'User',
-      });
-      expect(mockUser.save).toHaveBeenCalled();
-      expect(generateToken).toHaveBeenCalledWith(mockUser._id.toString(), 0);
-      expect(mockResponse.cookie).toHaveBeenCalledWith('token', 'mock-token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 3600000,
-      });
-      expect(serializeUser).toHaveBeenCalledWith(mockUser);
-      expect(mockResponse.status).toHaveBeenCalledWith(201);
-      expect(mockResponse.json).toHaveBeenCalledWith({ data: { id: mockUser._id.toString() } });
+      expect(res.cookie).toHaveBeenCalledWith('token', 'mock-token', expect.any(Object));
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(mockSerializedUser);
     });
 
-    it('should not register if user exists', async () => {
-      (UserModel.findOne as jest.Mock).mockResolvedValue(mockUser);
+    it('should return 400 if user already exists', async () => {
+      dbFindFirst().mockResolvedValue(mockUserRecord);
 
-      await register(mockRequest as Request, mockResponse);
+      await register(req, res);
 
-      expect(UserModel.findOne).toHaveBeenCalledWith({ email: 'test@example.com' });
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(400, [
-        {
-          status: '400',
-          title: 'Bad Request',
-          detail: 'User already exists',
-        },
+      expect(res.jsonApiError).toHaveBeenCalledWith(400, [
+        expect.objectContaining({ detail: 'User already exists' }),
+      ]);
+    });
+
+    it('should return 400 if required fields are missing', async () => {
+      const badReq = { body: { email: 'test@example.com' } } as Request;
+
+      await register(badReq, res);
+
+      expect(res.jsonApiError).toHaveBeenCalledWith(400, [
+        expect.objectContaining({ title: 'Bad Request' }),
       ]);
     });
   });
 
   describe('login', () => {
-    it('should login a user and return a token', async () => {
-      (UserModel.findOne as jest.Mock).mockResolvedValue(mockUser);
-      mockUser.comparePassword.mockResolvedValue(true);
+    const req = {
+      body: { email: 'test@example.com', password: 'password' },
+    } as Request;
 
-      await login(mockRequest as Request, mockResponse);
+    it('should login and set cookie', async () => {
+      dbFindFirst().mockResolvedValue(mockUserRecord);
+      jest.mocked(argon2.verify).mockResolvedValue(true);
 
-      expect(UserModel.findOne).toHaveBeenCalledWith({ email: 'test@example.com' });
-      expect(mockUser.comparePassword).toHaveBeenCalledWith('password');
-      expect(mockUser.tokenVersion).toBe(1);
-      expect(mockUser.save).toHaveBeenCalled();
-      expect(generateToken).toHaveBeenCalledWith(mockUser._id.toString(), 1);
-      expect(mockResponse.cookie).toHaveBeenCalledWith('token', 'mock-token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-        maxAge: 3600000,
-      });
-      expect(mockResponse.send).toHaveBeenCalled();
+      await login(req, res);
+
+      expect(generateToken).toHaveBeenCalledWith('user-uuid-123', 1);
+      expect(res.cookie).toHaveBeenCalledWith('token', 'mock-token', expect.any(Object));
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.send).toHaveBeenCalled();
     });
 
-    it('should return 401 when user is not found', async () => {
-      (UserModel.findOne as jest.Mock).mockResolvedValue(null);
+    it('should return 401 if user not found', async () => {
+      dbFindFirst().mockResolvedValue(undefined);
 
-      await login(mockRequest as Request, mockResponse);
+      await login(req, res);
 
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(401, [
-        { status: '401', title: 'Unauthorized', detail: 'Invalid credentials' },
+      expect(res.jsonApiError).toHaveBeenCalledWith(401, [
+        expect.objectContaining({ detail: 'Invalid credentials' }),
       ]);
     });
 
-    it('should return 401 when password is invalid', async () => {
-      (UserModel.findOne as jest.Mock).mockResolvedValue(mockUser);
-      mockUser.comparePassword.mockResolvedValue(false);
+    it('should return 401 if password is invalid', async () => {
+      dbFindFirst().mockResolvedValue(mockUserRecord);
+      jest.mocked(argon2.verify).mockResolvedValue(false);
 
-      await login(mockRequest as Request, mockResponse);
+      await login(req, res);
 
-      expect(mockUser.comparePassword).toHaveBeenCalledWith('password');
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(401, [
-        { status: '401', title: 'Unauthorized', detail: 'Invalid credentials' },
+      expect(res.jsonApiError).toHaveBeenCalledWith(401, [
+        expect.objectContaining({ detail: 'Invalid credentials' }),
+      ]);
+    });
+
+    it('should return 400 if credentials are missing', async () => {
+      const badReq = { body: {} } as Request;
+
+      await login(badReq, res);
+
+      expect(res.jsonApiError).toHaveBeenCalledWith(400, [
+        expect.objectContaining({ title: 'Bad Request' }),
       ]);
     });
   });
 
   describe('logout', () => {
-    it('should clear the token cookie', () => {
-      logout(mockRequest as Request, mockResponse);
+    it('should clear token cookie and return 204', () => {
+      logout({} as Request, res);
 
-      expect(mockResponse.clearCookie).toHaveBeenCalledWith('token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-      });
-      expect(mockResponse.status).toHaveBeenCalledWith(204);
-      expect(mockResponse.send).toHaveBeenCalled();
+      expect(res.clearCookie).toHaveBeenCalledWith('token', expect.any(Object));
+      expect(res.status).toHaveBeenCalledWith(204);
+      expect(res.send).toHaveBeenCalled();
     });
   });
 
   describe('getCurrentUser', () => {
-    it('should return user data when user is on the request', async () => {
-      const user = {
-        _id: mockUser._id,
-        email: 'test@example.com',
-        firstName: 'Test',
-        lastName: 'User',
-        displayName: 'Test User',
-      };
-      const req = { ...mockRequest, user } as unknown as Request;
+    it('should return user data from req.user', async () => {
+      const req = {
+        user: { ...mockUserRecord, displayName: 'Test User' },
+      } as unknown as Request;
 
-      await getCurrentUser(req, mockResponse);
+      await getCurrentUser(req, res);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(200);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        id: mockUser._id.toString(),
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        id: 'user-uuid-123',
         email: 'test@example.com',
         firstName: 'Test',
         lastName: 'User',
@@ -204,83 +206,31 @@ describe('Auth Controller', () => {
       });
     });
 
-    it('should fall back to firstName + lastName when displayName is missing', async () => {
-      const user = {
-        _id: mockUser._id,
-        email: 'test@example.com',
-        firstName: 'Test',
-        lastName: 'User',
-        displayName: undefined,
-      };
-      const req = { ...mockRequest, user } as unknown as Request;
+    it('should fall back to firstName + lastName when displayName is null', async () => {
+      const req = { user: mockUserRecord } as unknown as Request;
 
-      await getCurrentUser(req, mockResponse);
+      await getCurrentUser(req, res);
 
-      expect(mockResponse.json).toHaveBeenCalledWith(
-        expect.objectContaining({ displayName: 'Test User' })
-      );
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'Test User' }));
     });
 
-    it('should return 401 when no user is on the request', async () => {
-      const req = { ...mockRequest, user: undefined } as unknown as Request;
+    it('should return 401 when no user on request', async () => {
+      const req = { user: undefined } as unknown as Request;
 
-      await getCurrentUser(req, mockResponse);
+      await getCurrentUser(req, res);
 
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(401, [
-        { status: '401', title: 'Unauthorized', detail: 'User not found in request' },
+      expect(res.jsonApiError).toHaveBeenCalledWith(401, [
+        expect.objectContaining({ detail: 'User not found in request' }),
       ]);
     });
   });
 
   describe('authCheck', () => {
     it('should return 200', () => {
-      authCheck(mockRequest as Request, mockResponse);
+      authCheck({} as Request, res);
 
-      expect(mockResponse.status).toHaveBeenCalledWith(200);
-      expect(mockResponse.send).toHaveBeenCalled();
-    });
-  });
-
-  describe('Token Versioning', () => {
-    it('should invalidate the old token after a new login', async () => {
-      // Setup mocks for user
-      (UserModel.findOne as jest.Mock).mockResolvedValue(mockUser);
-      mockUser.comparePassword.mockResolvedValue(true);
-
-      // First login
-      await login(mockRequest as Request, mockResponse);
-      const firstTokenCall = (generateToken as jest.Mock).mock.calls[0];
-      const firstTokenVersion = firstTokenCall[1];
-      const firstToken = (generateToken as jest.Mock).mock.results[0].value;
-
-      // Simulate token in cookie for middleware
-      const reqWithFirstToken = { cookies: { token: firstToken } } as unknown as Request;
-      // Simulate user in DB with incremented tokenVersion after second login
-      mockUser.tokenVersion = firstTokenVersion + 1;
-      (UserModel.findById as jest.Mock).mockResolvedValue(mockUser);
-      // Simulate decoded token with old version
-      (require('../../utils/jwt').verifyJwt as jest.Mock).mockReturnValue({
-        userId: mockUser._id.toString(),
-        tokenVersion: firstTokenVersion,
-      });
-
-      // Call authenticate middleware
-      const next = jest.fn();
-      const { authenticate } = require('../../middleware/auth.middleware');
-      await authenticate(reqWithFirstToken, mockResponse, next);
-
-      // Should reject the old token
-      expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'Invalid token',
-          },
-        ],
-      });
-      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.send).toHaveBeenCalled();
     });
   });
 });

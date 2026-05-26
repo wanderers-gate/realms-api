@@ -1,21 +1,17 @@
-import mongoose from 'mongoose';
-
+import path from 'node:path';
+import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
+import { db } from '../db';
 import logger from '../utils/logger';
 
-import config from './config';
-
-const connectDB = async (): Promise<void> => {
+const runMigrations = (): void => {
   try {
-    const isK8s = process.env.USE_K8S_DB === 'true';
-    const maskedUri = config.mongodb.uri.replace(/\/\/.*@/, '//***:***@');
-
-    logger.info(`Connecting to ${isK8s ? 'Kubernetes' : 'local'} MongoDB: ${maskedUri}`);
-    await mongoose.connect(config.mongodb.uri, config.mongodb.options);
-    logger.info(`Successfully connected to ${isK8s ? 'Kubernetes' : 'local'} MongoDB`);
+    logger.info('Running database migrations...');
+    migrate(db, { migrationsFolder: path.join(__dirname, '../../drizzle') });
+    logger.info('Database migrations completed successfully');
   } catch (error) {
-    logger.error('MongoDB connection error:', error);
+    logger.error('Database migration error:', error);
     process.exit(1);
   }
 };
 
-export default connectDB;
+export default runMigrations;

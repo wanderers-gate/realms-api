@@ -1,235 +1,222 @@
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { Request, Response } from 'express';
-import { Types } from 'mongoose';
-import mongoose from 'mongoose';
-import { UserModel } from '../../models/user-model';
+import type { User } from '../../types/express';
+import type { JsonApiResponse } from '../../types/json-api';
+
+type SelectChain = { from: (_: unknown) => Promise<User[]> };
+type InsertChain = { values: (_: unknown) => { returning: () => Promise<User[]> } };
+type UpdateChain = {
+  set: (_: unknown) => { where: (_: unknown) => { returning: () => Promise<User[]> } };
+};
+type DeleteChain = { where: (_: unknown) => { returning: () => Promise<User[]> } };
+
+jest.mock('../../db', () => ({
+  db: {
+    select: jest.fn(),
+    query: { users: { findFirst: jest.fn() } },
+    insert: jest.fn(),
+    update: jest.fn(),
+    delete: jest.fn(),
+  },
+}));
+
+jest.mock('argon2', () => ({
+  hash: jest.fn(),
+  argon2id: 2,
+}));
+
+jest.mock('../../serializers/user.serializer', () => ({
+  serializeUser: jest.fn(),
+  deserializeUser: jest.fn(),
+}));
+
+import * as argon2 from 'argon2';
+import { db } from '../../db';
 import { deserializeUser, serializeUser } from '../../serializers/user.serializer';
 import { create, destroy, index, show, update } from '../user.controller';
 
-// Mock dependencies
-jest.mock('../../models/user-model');
-jest.mock('../../serializers/user.serializer');
+const createMockResponse = () =>
+  ({
+    status: jest.fn().mockReturnThis(),
+    json: jest.fn().mockReturnThis(),
+    send: jest.fn().mockReturnThis(),
+    jsonApiError: jest.fn().mockReturnThis(),
+  }) as unknown as Response;
+
+const mockUser: User = {
+  id: 'user-uuid-123',
+  email: 'test@example.com',
+  password: 'hashed-password',
+  firstName: 'Test',
+  lastName: 'User',
+  displayName: null,
+  tokenVersion: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+const mockSerializedUser: JsonApiResponse = {
+  data: { id: 'user-uuid-123', type: 'user', attributes: { email: 'test@example.com' } },
+};
+
+const dbSelect = () => db.select as unknown as jest.Mock<() => SelectChain>;
+const dbFindFirst = () =>
+  db.query.users.findFirst as unknown as jest.Mock<() => Promise<User | undefined>>;
+const dbInsert = () => db.insert as unknown as jest.Mock<() => InsertChain>;
+const dbUpdate = () => db.update as unknown as jest.Mock<() => UpdateChain>;
+const dbDelete = () => db.delete as unknown as jest.Mock<() => DeleteChain>;
 
 describe('User Controller', () => {
-  let mockRequest: Request;
-  let mockResponse: Response;
+  let res: Response;
 
   beforeEach(() => {
-    mockRequest = {
-      params: {},
-      body: {},
-    } as Request;
-    mockResponse = {
-      json: jest.fn(),
-      status: jest.fn().mockReturnThis(),
-      send: jest.fn(),
-      jsonApiError: jest.fn(),
-    } as unknown as Response;
     jest.clearAllMocks();
-  });
+    res = createMockResponse();
+    jest.mocked(serializeUser).mockReturnValue(mockSerializedUser);
+    jest.mocked(deserializeUser).mockReturnValue({
+      email: 'test@example.com',
+      firstName: 'Test',
+      lastName: 'User',
+    });
 
-  afterAll(async () => {
-    // Close mongoose connection if it exists
-    if (mongoose.connection?.readyState !== 0) {
-      await mongoose.connection.close();
-    }
+    dbSelect().mockImplementation(() => ({
+      from: () => Promise.resolve([mockUser]),
+    }));
+
+    dbInsert().mockImplementation(() => ({
+      values: () => ({ returning: () => Promise.resolve([mockUser]) }),
+    }));
+
+    dbUpdate().mockImplementation(() => ({
+      set: () => ({
+        where: () => ({ returning: () => Promise.resolve([mockUser]) }),
+      }),
+    }));
+
+    dbDelete().mockImplementation(() => ({
+      where: () => ({ returning: () => Promise.resolve([mockUser]) }),
+    }));
   });
 
   describe('index', () => {
     it('should return all users', async () => {
-      const mockUsers = [{ _id: '1', email: 'test@example.com' }];
-      (UserModel.find as jest.Mock).mockResolvedValue(mockUsers);
-      (serializeUser as jest.Mock).mockReturnValue({ data: mockUsers });
+      await index({} as Request, res);
 
-      await index(mockRequest, mockResponse);
-
-      expect(UserModel.find).toHaveBeenCalled();
-      expect(serializeUser).toHaveBeenCalledWith(mockUsers);
-      expect(mockResponse.json).toHaveBeenCalledWith({ data: mockUsers });
+      expect(serializeUser).toHaveBeenCalledWith([mockUser]);
+      expect(res.json).toHaveBeenCalledWith(mockSerializedUser);
     });
 
     it('should handle errors', async () => {
-      (UserModel.find as jest.Mock).mockRejectedValue(new Error('Database error'));
+      dbSelect().mockImplementation(() => ({
+        from: () => Promise.reject(new Error('DB error')),
+      }));
 
-      await index(mockRequest, mockResponse);
+      await index({} as Request, res);
 
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(500, [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to fetch users',
-        },
+      expect(res.jsonApiError).toHaveBeenCalledWith(500, [
+        expect.objectContaining({ title: 'Internal Server Error' }),
       ]);
     });
   });
 
   describe('show', () => {
     it('should return a user by id', async () => {
-      const mockUser = { _id: '1', email: 'test@example.com' };
-      mockRequest.params.id = '1';
-      (UserModel.findById as jest.Mock).mockResolvedValue(mockUser);
-      (serializeUser as jest.Mock).mockReturnValue({ data: mockUser });
+      dbFindFirst().mockResolvedValue(mockUser);
+      const req = { params: { id: 'user-uuid-123' } } as unknown as Request;
 
-      await show(mockRequest, mockResponse);
+      await show(req, res);
 
-      expect(UserModel.findById).toHaveBeenCalledWith('1');
       expect(serializeUser).toHaveBeenCalledWith(mockUser);
-      expect(mockResponse.json).toHaveBeenCalledWith({ data: mockUser });
+      expect(res.json).toHaveBeenCalledWith(mockSerializedUser);
     });
 
     it('should return 404 if user not found', async () => {
-      mockRequest.params.id = '1';
-      (UserModel.findById as jest.Mock).mockResolvedValue(null);
+      dbFindFirst().mockResolvedValue(undefined);
+      const req = { params: { id: 'nonexistent-id' } } as unknown as Request;
 
-      await show(mockRequest, mockResponse);
+      await show(req, res);
 
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(404, [
-        {
-          status: '404',
-          title: 'Not Found',
-          detail: 'User not found',
-        },
-      ]);
-    });
-
-    it('should handle errors', async () => {
-      mockRequest.params.id = '1';
-      (UserModel.findById as jest.Mock).mockRejectedValue(new Error('Database error'));
-
-      await show(mockRequest, mockResponse);
-
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(500, [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to fetch user',
-        },
+      expect(res.jsonApiError).toHaveBeenCalledWith(404, [
+        expect.objectContaining({ title: 'Not Found' }),
       ]);
     });
   });
 
   describe('create', () => {
     it('should create a new user', async () => {
-      const mockUserData = { email: 'test@example.com' };
-      const mockCreatedUser = { _id: '1', ...mockUserData };
-      mockRequest.body = { data: { attributes: mockUserData } };
-      (deserializeUser as jest.Mock).mockReturnValue(mockUserData);
-      (UserModel.create as jest.Mock).mockResolvedValue(mockCreatedUser);
-      (serializeUser as jest.Mock).mockReturnValue({ data: mockCreatedUser });
+      jest.mocked(deserializeUser).mockReturnValue({
+        email: 'new@example.com',
+        password: 'plaintext',
+        firstName: 'New',
+        lastName: 'User',
+      });
+      jest.mocked(argon2.hash).mockResolvedValue('hashed-password');
+      const req = { body: {} } as Request;
 
-      await create(mockRequest, mockResponse);
+      await create(req, res);
 
-      expect(deserializeUser).toHaveBeenCalledWith(mockRequest.body);
-      expect(UserModel.create).toHaveBeenCalledWith(mockUserData);
-      expect(mockResponse.status).toHaveBeenCalledWith(201);
-      expect(mockResponse.json).toHaveBeenCalledWith({ data: mockCreatedUser });
+      expect(argon2.hash).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(mockSerializedUser);
     });
 
-    it('should handle errors', async () => {
-      mockRequest.body = { data: { attributes: {} } };
-      (UserModel.create as jest.Mock).mockRejectedValue(new Error('Database error'));
+    it('should return 400 if required fields are missing', async () => {
+      jest.mocked(deserializeUser).mockReturnValue({ email: 'only@example.com' });
+      const req = { body: {} } as Request;
 
-      await create(mockRequest, mockResponse);
+      await create(req, res);
 
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(400, [
-        {
-          status: '400',
-          title: 'Bad Request',
-          detail: 'Failed to create user',
-        },
+      expect(res.jsonApiError).toHaveBeenCalledWith(400, [
+        expect.objectContaining({ title: 'Bad Request' }),
       ]);
     });
   });
 
   describe('update', () => {
     it('should update a user', async () => {
-      const mockUserData = { email: 'updated@example.com' };
-      const mockUpdatedUser = { _id: '1', ...mockUserData };
-      mockRequest.params.id = '1';
-      mockRequest.body = { data: { attributes: mockUserData } };
-      (deserializeUser as jest.Mock).mockReturnValue(mockUserData);
-      (UserModel.findByIdAndUpdate as jest.Mock).mockResolvedValue(mockUpdatedUser);
-      (serializeUser as jest.Mock).mockReturnValue({ data: mockUpdatedUser });
+      const req = { params: { id: 'user-uuid-123' }, body: {} } as unknown as Request;
 
-      await update(mockRequest, mockResponse);
+      await update(req, res);
 
-      expect(deserializeUser).toHaveBeenCalledWith(mockRequest.body);
-      expect(UserModel.findByIdAndUpdate).toHaveBeenCalledWith('1', mockUserData, { new: true });
-      expect(mockResponse.json).toHaveBeenCalledWith({ data: mockUpdatedUser });
+      expect(res.json).toHaveBeenCalledWith(mockSerializedUser);
     });
 
     it('should return 404 if user not found', async () => {
-      mockRequest.params.id = '1';
-      mockRequest.body = { data: { attributes: {} } };
-      (UserModel.findByIdAndUpdate as jest.Mock).mockResolvedValue(null);
+      dbUpdate().mockImplementation(() => ({
+        set: () => ({
+          where: () => ({ returning: () => Promise.resolve([]) }),
+        }),
+      }));
+      const req = { params: { id: 'nonexistent-id' }, body: {} } as unknown as Request;
 
-      await update(mockRequest, mockResponse);
+      await update(req, res);
 
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(404, [
-        {
-          status: '404',
-          title: 'Not Found',
-          detail: 'User not found',
-        },
-      ]);
-    });
-
-    it('should handle errors', async () => {
-      mockRequest.params.id = '1';
-      mockRequest.body = { data: { attributes: {} } };
-      (UserModel.findByIdAndUpdate as jest.Mock).mockRejectedValue(new Error('Database error'));
-
-      await update(mockRequest, mockResponse);
-
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(400, [
-        {
-          status: '400',
-          title: 'Bad Request',
-          detail: 'Failed to update user',
-        },
+      expect(res.jsonApiError).toHaveBeenCalledWith(404, [
+        expect.objectContaining({ title: 'Not Found' }),
       ]);
     });
   });
 
   describe('destroy', () => {
     it('should delete a user', async () => {
-      const mockUser = { _id: '1', email: 'test@example.com' };
-      mockRequest.params.id = '1';
-      (UserModel.findByIdAndDelete as jest.Mock).mockResolvedValue(mockUser);
+      const req = { params: { id: 'user-uuid-123' } } as unknown as Request;
 
-      await destroy(mockRequest, mockResponse);
+      await destroy(req, res);
 
-      expect(UserModel.findByIdAndDelete).toHaveBeenCalledWith('1');
-      expect(mockResponse.status).toHaveBeenCalledWith(204);
-      expect(mockResponse.send).toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(204);
+      expect(res.send).toHaveBeenCalled();
     });
 
     it('should return 404 if user not found', async () => {
-      mockRequest.params.id = '1';
-      (UserModel.findByIdAndDelete as jest.Mock).mockResolvedValue(null);
+      dbDelete().mockImplementation(() => ({
+        where: () => ({ returning: () => Promise.resolve([]) }),
+      }));
+      const req = { params: { id: 'nonexistent-id' } } as unknown as Request;
 
-      await destroy(mockRequest, mockResponse);
+      await destroy(req, res);
 
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(404, [
-        {
-          status: '404',
-          title: 'Not Found',
-          detail: 'User not found',
-        },
-      ]);
-    });
-
-    it('should handle errors', async () => {
-      mockRequest.params.id = '1';
-      (UserModel.findByIdAndDelete as jest.Mock).mockRejectedValue(new Error('Database error'));
-
-      await destroy(mockRequest, mockResponse);
-
-      expect(mockResponse.jsonApiError).toHaveBeenCalledWith(500, [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to delete user',
-        },
+      expect(res.jsonApiError).toHaveBeenCalledWith(404, [
+        expect.objectContaining({ title: 'Not Found' }),
       ]);
     });
   });

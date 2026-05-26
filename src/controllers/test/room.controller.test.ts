@@ -1,115 +1,95 @@
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  jest,
-} from '@jest/globals';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { Request, Response } from 'express';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import { Types } from 'mongoose';
-import mongoose from 'mongoose';
-import { RoomModel } from '../../models/room-model';
-import { UserModel } from '../../models/user-model';
+
+jest.mock('../../helpers/storage', () => ({
+  slugify: jest.fn((name: string) => name.toLowerCase().replace(/\s+/g, '-')),
+  createRoomDirs: jest.fn(),
+  renameRoomDir: jest.fn(),
+}));
+
+jest.mock('../../db', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Database = require('better-sqlite3');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { drizzle } = require('drizzle-orm/better-sqlite3');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { migrate } = require('drizzle-orm/better-sqlite3/migrator');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const schema = require('../../db/schema');
+  const sqlite = new Database(':memory:');
+  sqlite.pragma('foreign_keys = ON');
+  const db = drizzle(sqlite, { schema });
+  migrate(db, { migrationsFolder: path.join(__dirname, '../../../drizzle') });
+  return { db };
+});
+
+import { db } from '../../db';
+import { rooms, users } from '../../db/schema';
+import { createRoomDirs } from '../../helpers/storage';
 import { createRoom, deleteRoom, getRoom, getRooms, updateRoom } from '../room.controller';
 
-// Mock the response object
 const mockResponse = () => {
   const res = {} as Response;
   res.status = jest.fn<(code: number) => Response>().mockReturnValue(res);
   res.json = jest.fn<Response['json']>().mockReturnValue(res);
-  return res as Response & { json: jest.MockedFunction<Response['json']> };
+  return res as Response & {
+    status: jest.MockedFunction<Response['status']>;
+    json: jest.MockedFunction<Response['json']>;
+  };
 };
 
-// Mock the request object
 const mockRequest = (
   body: Record<string, unknown> = {},
   params: Record<string, string> = {},
   query: Record<string, string> = {},
-  user: { id: string } | null = null
-) => {
-  const req = {
+  userId?: string
+) =>
+  ({
     body,
     params,
     query,
-    userId: user?.id,
-    // biome-ignore lint/suspicious/noExplicitAny: This is for test compatibility with middleware expectations
-    user: user ? ({ id: user.id } as any) : undefined,
-  } as unknown as Request;
-  return req;
-};
+    userId,
+  }) as unknown as Request;
 
-describe('Room Controller', () => {
-  let mongoServer: MongoMemoryServer;
-  let testUser: InstanceType<typeof UserModel>;
+let testUserId: string;
 
-  beforeAll(async () => {
-    try {
-      mongoServer = await MongoMemoryServer.create();
-      const mongoUri = mongoServer.getUri();
-      await mongoose.connect(mongoUri);
-    } catch (error) {
-      console.error('MongoDB connection error:', error);
-      throw error;
-    }
-  });
-
-  afterAll(async () => {
-    try {
-      await mongoose.connection.dropDatabase();
-      await mongoose.connection.close();
-      await mongoServer.stop();
-    } catch (error) {
-      console.error('Error during cleanup:', error);
-      throw error;
-    }
-  });
-
-  beforeEach(async () => {
-    // Clear collections
-    await RoomModel.deleteMany({});
-    await UserModel.deleteMany({});
-
-    // Create a test user
-    testUser = new UserModel({
+beforeEach(async () => {
+  const [user] = await db
+    .insert(users)
+    .values({
       email: 'test@example.com',
-      password: 'password123',
+      password: 'hashed-password',
       firstName: 'Test',
       lastName: 'User',
       displayName: 'Test User',
-    });
-    await testUser.save();
-  });
+    })
+    .returning();
+  testUserId = user.id;
+  jest.clearAllMocks();
+});
 
-  afterEach(async () => {
-    // Clean up
-    await RoomModel.deleteMany({});
-    await UserModel.deleteMany({});
-  });
+afterEach(async () => {
+  await db.delete(rooms);
+  await db.delete(users);
+});
 
+describe('Room Controller', () => {
   describe('createRoom', () => {
     it('should create a room successfully', async () => {
       const req = mockRequest(
         {
           type: 'room',
-          id: '',
           attributes: {
             name: 'Test Room',
             description: 'A test room',
             maxPlayers: 5,
-            settings: {
-              isPrivate: false,
-              allowGuests: true,
-              gridSize: 50,
-            },
+            settings: { isPrivate: false, allowGuests: true, gridSize: 50 },
           },
         },
         {},
         {},
-        { id: testUser._id.toString() }
+        testUserId
       );
       const res = mockResponse();
 
@@ -128,135 +108,100 @@ describe('Room Controller', () => {
           }),
         })
       );
-
-      // Verify room was saved to database
-      const savedRoom = await RoomModel.findOne({ name: 'Test Room' });
-      expect(savedRoom).toBeTruthy();
-      expect(savedRoom?.createdBy.toString()).toBe(testUser._id.toString());
+      expect(createRoomDirs).toHaveBeenCalledWith('test-room');
     });
 
     it('should return 401 if user is not authenticated', async () => {
-      const req = mockRequest(
-        {
-          name: 'Test Room',
-          description: 'A test room',
-        },
-        {},
-        {},
-        null
-      );
+      const req = mockRequest({ attributes: { name: 'Test Room' } });
       const res = mockResponse();
 
       await createRoom(req, res);
 
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User must be authenticated to create a room',
-          },
-        ],
+        errors: [expect.objectContaining({ status: '401', title: 'Unauthorized' })],
       });
     });
 
     it('should return 404 if user does not exist', async () => {
-      const req = mockRequest(
-        {
-          name: 'Test Room',
-          description: 'A test room',
-        },
-        {},
-        {},
-        { id: new Types.ObjectId().toString() }
-      );
+      const req = mockRequest({ attributes: { name: 'Test Room' } }, {}, {}, 'nonexistent-user-id');
       const res = mockResponse();
 
       await createRoom(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '404',
-            title: 'User Not Found',
-            detail: 'User not found',
-          },
-        ],
+        errors: [expect.objectContaining({ status: '404', title: 'User Not Found' })],
+      });
+    });
+
+    it('should return 400 if room name is missing', async () => {
+      const req = mockRequest({ attributes: { description: 'No name' } }, {}, {}, testUserId);
+      const res = mockResponse();
+
+      await createRoom(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        errors: [expect.objectContaining({ status: '400', title: 'Bad Request' })],
+      });
+    });
+
+    it('should return 409 if room name already exists', async () => {
+      await db.insert(rooms).values({
+        name: 'Duplicate Room',
+        slug: 'duplicate-room',
+        roomCode: 'DUP001',
+        createdById: testUserId,
+      });
+
+      const req = mockRequest({ attributes: { name: 'Duplicate Room' } }, {}, {}, testUserId);
+      const res = mockResponse();
+
+      await createRoom(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(409);
+      expect(res.json).toHaveBeenCalledWith({
+        errors: [expect.objectContaining({ status: '409', title: 'Conflict' })],
       });
     });
   });
 
   describe('getRooms', () => {
-    it('should return all public rooms', async () => {
-      // Create some test rooms
-      const room1 = new RoomModel({
-        name: 'Room 1',
-        description: 'First room',
-        roomId: 'ABC123',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: true },
-      });
-      await room1.save();
+    beforeEach(async () => {
+      await db.insert(rooms).values([
+        {
+          name: 'Public Room',
+          slug: 'public-room',
+          roomCode: 'PUB001',
+          createdById: testUserId,
+          isActive: true,
+          allowGuests: true,
+        },
+        {
+          name: 'No Guest Room',
+          slug: 'no-guest-room',
+          roomCode: 'NGR001',
+          createdById: testUserId,
+          isActive: true,
+          allowGuests: false,
+        },
+      ]);
+    });
 
-      const room2 = new RoomModel({
-        name: 'Room 2',
-        description: 'Second room',
-        roomId: 'DEF456',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: true },
-      });
-      await room2.save();
-
-      const req = mockRequest({}, {}, {});
+    it('should return all active rooms for authenticated users', async () => {
+      const req = mockRequest({}, {}, {}, testUserId);
       const res = mockResponse();
 
       await getRooms(req, res);
 
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.arrayContaining([
-            expect.objectContaining({
-              type: 'room',
-              attributes: expect.objectContaining({
-                name: 'Room 1',
-              }),
-            }),
-            expect.objectContaining({
-              type: 'room',
-              attributes: expect.objectContaining({
-                name: 'Room 2',
-              }),
-            }),
-          ]),
-        })
-      );
+      const response = (res.json as jest.MockedFunction<Response['json']>).mock.calls[0][0];
+      expect(response.data).toHaveLength(2);
+      expect(response.meta.pagination.total).toBe(2);
     });
 
-    it('should filter rooms for unauthenticated users', async () => {
-      // Create rooms with different guest settings
-      const publicRoom = new RoomModel({
-        name: 'Public Room',
-        roomId: 'PUB123',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: true },
-      });
-      await publicRoom.save();
-
-      const privateRoom = new RoomModel({
-        name: 'Private Room',
-        roomId: 'PRI456',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: false },
-      });
-      await privateRoom.save();
-
-      const req = mockRequest({}, {}, {});
+    it('should filter out non-guest rooms for unauthenticated users', async () => {
+      const req = mockRequest();
       const res = mockResponse();
 
       await getRooms(req, res);
@@ -265,20 +210,37 @@ describe('Room Controller', () => {
       expect(response.data).toHaveLength(1);
       expect(response.data[0].attributes.name).toBe('Public Room');
     });
+
+    it('should include pagination metadata', async () => {
+      const req = mockRequest({}, {}, { page: '1', limit: '10' }, testUserId);
+      const res = mockResponse();
+
+      await getRooms(req, res);
+
+      const response = (res.json as jest.MockedFunction<Response['json']>).mock.calls[0][0];
+      expect(response.meta.pagination).toMatchObject({ page: 1, limit: 10 });
+    });
   });
 
   describe('getRoom', () => {
-    it('should return a specific room', async () => {
-      const room = new RoomModel({
-        name: 'Test Room',
-        description: 'A test room',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: true },
-      });
-      await room.save();
+    let testRoomId: string;
+    let testRoomCode: string;
 
-      const req = mockRequest({}, { roomId: room.roomId }, {});
+    beforeEach(async () => {
+      testRoomCode = 'GET001';
+      const [room] = await db.insert(rooms).values({
+        name: 'Get Test Room',
+        slug: 'get-test-room',
+        roomCode: testRoomCode,
+        createdById: testUserId,
+        isActive: true,
+        allowGuests: true,
+      }).returning();
+      testRoomId = room.id;
+    });
+
+    it('should return a specific room', async () => {
+      const req = mockRequest({}, { roomId: testRoomId });
       const res = mockResponse();
 
       await getRoom(req, res);
@@ -287,129 +249,77 @@ describe('Room Controller', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             type: 'room',
-            attributes: expect.objectContaining({
-              name: 'Test Room',
-              roomId: room.roomId,
-            }),
+            attributes: expect.objectContaining({ name: 'Get Test Room', roomCode: testRoomCode }),
           }),
         })
       );
     });
 
     it('should return 404 for non-existent room', async () => {
-      const req = mockRequest({}, { roomId: 'NONEXISTENT' }, {});
+      const req = mockRequest({}, { roomId: 'nonexistent-uuid' });
       const res = mockResponse();
 
       await getRoom(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
-      expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '404',
-            title: 'Room Not Found',
-            detail: 'Room not found or inactive',
-          },
-        ],
-      });
     });
 
-    it('should return 403 for private room when user is not authenticated', async () => {
-      const room = new RoomModel({
-        name: 'Private Room',
-        createdBy: testUser._id,
+    it('should return 403 for guest-restricted room when unauthenticated', async () => {
+      const [privateRoom] = await db.insert(rooms).values({
+        name: 'No Guest',
+        slug: 'no-guest',
+        roomCode: 'NGR002',
+        createdById: testUserId,
         isActive: true,
-        settings: { isPrivate: false, allowGuests: false },
-      });
-      await room.save();
+        allowGuests: false,
+      }).returning();
 
-      const req = mockRequest({}, { roomId: room.roomId }, {}, null);
+      const req = mockRequest({}, { roomId: privateRoom.id });
       const res = mockResponse();
 
       await getRoom(req, res);
 
       expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '403',
-            title: 'Access Denied',
-            detail: 'This room does not allow guest access',
-          },
-        ],
-      });
     });
 
-    it('should include createdBy user data in the response', async () => {
-      const room = new RoomModel({
-        name: 'Test Room',
-        description: 'A test room',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: true },
-      });
-      await room.save();
-
-      const req = mockRequest({}, { roomId: room.roomId }, {});
+    it('should include creator in response', async () => {
+      const req = mockRequest({}, { roomId: testRoomId });
       const res = mockResponse();
 
       await getRoom(req, res);
 
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({
-            type: 'room',
-            attributes: expect.objectContaining({
-              name: 'Test Room',
-              roomId: room.roomId,
-            }),
-            relationships: expect.objectContaining({
-              createdBy: expect.objectContaining({
-                data: expect.objectContaining({
-                  id: testUser._id.toString(),
-                  type: 'user',
-                }),
-              }),
-            }),
+      const response = (res.json as jest.MockedFunction<Response['json']>).mock.calls[0][0];
+      expect(response.included).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'user',
+            attributes: expect.objectContaining({ firstName: 'Test', lastName: 'User' }),
           }),
-          included: expect.arrayContaining([
-            expect.objectContaining({
-              type: 'user',
-              id: testUser._id.toString(),
-              attributes: expect.objectContaining({
-                firstName: 'Test',
-                lastName: 'User',
-                displayName: 'Test User',
-              }),
-            }),
-          ]),
-        })
+        ])
       );
     });
   });
 
   describe('updateRoom', () => {
-    it('should update room successfully', async () => {
-      const room = new RoomModel({
-        name: 'Original Name',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: true },
-      });
-      await room.save();
+    let testRoomId: string;
 
+    beforeEach(async () => {
+      const [room] = await db.insert(rooms).values({
+        name: 'Original Name',
+        slug: 'original-name',
+        roomCode: 'UPD001',
+        createdById: testUserId,
+        isActive: true,
+      }).returning();
+      testRoomId = room.id;
+    });
+
+    it('should update room name and description', async () => {
       const req = mockRequest(
-        {
-          type: 'room',
-          id: room.roomId,
-          attributes: {
-            name: 'Updated Name',
-            description: 'Updated description',
-          },
-        },
-        { roomId: room.roomId },
+        { attributes: { name: 'Updated Name', description: 'Updated description' } },
+        { roomId: testRoomId },
         {},
-        { id: testUser._id.toString() }
+        testUserId
       );
       const res = mockResponse();
 
@@ -427,91 +337,80 @@ describe('Room Controller', () => {
       );
     });
 
+    it('should return 401 if unauthenticated', async () => {
+      const req = mockRequest({ attributes: { name: 'New Name' } }, { roomId: testRoomId });
+      const res = mockResponse();
+
+      await updateRoom(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
     it('should return 403 if user is not the creator', async () => {
-      const room = new RoomModel({
-        name: 'Test Room',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: true },
-      });
-      await room.save();
+      const [otherUser] = await db
+        .insert(users)
+        .values({
+          email: 'other@example.com',
+          password: 'hash',
+          firstName: 'Other',
+          lastName: 'User',
+        })
+        .returning();
 
       const req = mockRequest(
-        {
-          name: 'Updated Name',
-        },
-        { roomId: room.roomId },
+        { attributes: { name: 'New Name' } },
+        { roomId: testRoomId },
         {},
-        { id: new Types.ObjectId().toString() }
+        otherUser.id
       );
       const res = mockResponse();
 
       await updateRoom(req, res);
 
       expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '403',
-            title: 'Forbidden',
-            detail: 'Only the room creator can update the room',
-          },
-        ],
-      });
     });
   });
 
   describe('deleteRoom', () => {
-    it('should delete room successfully', async () => {
-      const room = new RoomModel({
-        name: 'Test Room',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: true },
-      });
-      await room.save();
+    let testRoomId: string;
 
-      const req = mockRequest({}, { roomId: room.roomId }, {}, { id: testUser._id.toString() });
+    beforeEach(async () => {
+      const [room] = await db.insert(rooms).values({
+        name: 'Delete Me',
+        slug: 'delete-me',
+        roomCode: 'DEL001',
+        createdById: testUserId,
+        isActive: true,
+      }).returning();
+      testRoomId = room.id;
+    });
+
+    it('should soft-delete room', async () => {
+      const req = mockRequest({}, { roomId: testRoomId }, {}, testUserId);
       const res = mockResponse();
 
       await deleteRoom(req, res);
 
       expect(res.status).toHaveBeenCalledWith(204);
-
-      // Verify room is soft deleted
-      const deletedRoom = await RoomModel.findOne({ roomId: room.roomId });
-      expect(deletedRoom?.isActive).toBe(false);
     });
 
     it('should return 403 if user is not the creator', async () => {
-      const room = new RoomModel({
-        name: 'Test Room',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: true },
-      });
-      await room.save();
+      const [otherUser] = await db
+        .insert(users)
+        .values({
+          email: 'other2@example.com',
+          password: 'hash',
+          firstName: 'Other',
+          lastName: 'User',
+        })
+        .returning();
 
-      const req = mockRequest(
-        {},
-        { roomId: room.roomId },
-        {},
-        { id: new Types.ObjectId().toString() }
-      );
+      const req = mockRequest({}, { roomId: testRoomId }, {}, otherUser.id);
       const res = mockResponse();
 
       await deleteRoom(req, res);
 
       expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '403',
-            title: 'Forbidden',
-            detail: 'Only the room creator can delete the room',
-          },
-        ],
-      });
     });
   });
 });

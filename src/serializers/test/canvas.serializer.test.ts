@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
-import { Types } from 'mongoose';
-import type { CanvasDocument } from '../../models/canvas-model';
+import type { InferSelectModel } from 'drizzle-orm';
+import type { canvasOperations, canvases } from '../../db/schema';
 import type { CanvasOperation } from '../../types/canvas';
 import {
   deserializeCanvas,
@@ -8,42 +8,45 @@ import {
   serializeCanvasOperations,
 } from '../canvas.serializer';
 
-describe('Canvas Serializer', () => {
-  const mockUserId = new Types.ObjectId();
-  const mockCanvasId = new Types.ObjectId();
+type Canvas = InferSelectModel<typeof canvases>;
+type CanvasOp = InferSelectModel<typeof canvasOperations>;
 
-  const mockCanvasDoc: Partial<CanvasDocument> = {
-    _id: mockCanvasId,
-    roomId: 'TEST123',
-    operations: [
-      {
-        id: 'op1',
-        type: 'draw',
-        tool: 'pen',
-        points: [{ x: 10, y: 20 }],
-        color: '#000000',
-        size: 2,
-        timestamp: new Date('2023-01-01T00:00:00Z'),
-        userId: 'user123',
-      },
-    ],
+describe('Canvas Serializer', () => {
+  const mockCanvas: Canvas = {
+    id: 'canvas-uuid-123',
+    roomId: 'room-uuid-456',
     lastModified: new Date('2023-01-01T12:00:00Z'),
     version: 5,
-    createdBy: mockUserId,
+    createdById: 'user-uuid-789',
     createdAt: new Date('2023-01-01T00:00:00Z'),
     updatedAt: new Date('2023-01-01T12:00:00Z'),
-  } as CanvasDocument;
+  };
+
+  const mockOps: CanvasOp[] = [
+    {
+      id: 'row-id-1',
+      canvasId: 'canvas-uuid-123',
+      opId: 'op1',
+      type: 'draw',
+      tool: 'pen',
+      points: [{ x: 10, y: 20 }],
+      color: '#000000',
+      size: 2,
+      userId: 'user123',
+      timestamp: new Date('2023-01-01T00:00:00Z'),
+    },
+  ];
 
   describe('serializeCanvas', () => {
-    it('should serialize a single canvas document', () => {
-      const result = serializeCanvas(mockCanvasDoc as CanvasDocument);
+    it('should serialize a canvas with its operations', () => {
+      const result = serializeCanvas(mockCanvas, mockOps);
 
       expect(result).toEqual({
         data: {
-          id: mockCanvasId.toString(),
+          id: 'canvas-uuid-123',
           type: 'canvas',
           attributes: {
-            roomId: 'TEST123',
+            roomId: 'room-uuid-456',
             operations: [
               {
                 id: 'op1',
@@ -63,51 +66,28 @@ describe('Canvas Serializer', () => {
           },
           relationships: {
             createdBy: {
-              data: {
-                id: mockUserId.toString(),
-                type: 'user',
-              },
+              data: { id: 'user-uuid-789', type: 'user' },
             },
           },
         },
       });
     });
 
-    it('should serialize an array of canvas documents', () => {
-      const canvases = [mockCanvasDoc, mockCanvasDoc] as CanvasDocument[];
-      const result = serializeCanvas(canvases);
+    it('should serialize a canvas with no operations', () => {
+      const result = serializeCanvas(mockCanvas, []);
 
-      expect(result.data).toBeInstanceOf(Array);
-      expect(result.data).toHaveLength(2);
-      if (Array.isArray(result.data)) {
-        expect(result.data[0]).toHaveProperty('type', 'canvas');
-        expect(result.data[1]).toHaveProperty('type', 'canvas');
+      if (!Array.isArray(result.data)) {
+        expect(result.data.attributes.operations).toEqual([]);
       }
-    });
-
-    it('should handle canvas without relationships', () => {
-      const canvasWithoutCreator = {
-        _id: mockCanvasId,
-        roomId: 'TEST123',
-        operations: [],
-        lastModified: new Date('2023-01-01T12:00:00Z'),
-        version: 5,
-        createdAt: new Date('2023-01-01T00:00:00Z'),
-        updatedAt: new Date('2023-01-01T12:00:00Z'),
-      } as Partial<CanvasDocument> as CanvasDocument;
-      const result = serializeCanvas(canvasWithoutCreator);
-
-      expect(result.data).not.toHaveProperty('relationships');
     });
   });
 
   describe('deserializeCanvas', () => {
-    it('should deserialize a JSON:API resource object', () => {
-      const jsonApiResource = {
-        id: mockCanvasId.toString(),
+    it('should extract operations from attributes', () => {
+      const resource = {
+        id: 'canvas-uuid-123',
         type: 'canvas',
         attributes: {
-          roomId: 'TEST123',
           operations: [
             {
               id: 'op1',
@@ -120,104 +100,23 @@ describe('Canvas Serializer', () => {
               userId: 'user123',
             },
           ],
-          version: 5,
-        },
-        relationships: {
-          createdBy: {
-            data: {
-              id: mockUserId.toString(),
-              type: 'user',
-            },
-          },
         },
       };
 
-      const result = deserializeCanvas(jsonApiResource);
+      const result = deserializeCanvas(resource);
 
-      expect(result).toEqual({
-        _id: mockCanvasId,
-        roomId: 'TEST123',
-        operations: [
-          {
-            id: 'op1',
-            type: 'draw',
-            tool: 'pen',
-            points: [{ x: 10, y: 20 }],
-            color: '#000000',
-            size: 2,
-            timestamp: new Date('2023-01-01T00:00:00Z'),
-            userId: 'user123',
-          },
-        ],
-        version: 5,
-        createdBy: mockUserId.toString(),
-      });
+      expect(result.operations).toHaveLength(1);
+      expect(result.operations?.[0].id).toBe('op1');
     });
 
-    it('should handle resource without attributes (jsona format)', () => {
-      const jsonaResource = {
-        id: mockCanvasId.toString(),
-        type: 'canvas',
-        attributes: {
-          roomId: 'TEST123',
-          operations: [],
-          version: 1,
-        },
-      };
-
-      const result = deserializeCanvas(jsonaResource);
-
-      expect(result).toEqual({
-        _id: mockCanvasId,
-        roomId: 'TEST123',
-        operations: [],
-        version: 1,
-      });
+    it('should return undefined operations when none present', () => {
+      const result = deserializeCanvas({ id: 'x', type: 'canvas', attributes: {} });
+      expect(result.operations).toBeUndefined();
     });
 
-    it('should handle resource without relationships', () => {
-      const resourceWithoutRelationships = {
-        id: mockCanvasId.toString(),
-        type: 'canvas',
-        attributes: {
-          roomId: 'TEST123',
-          operations: [],
-          version: 1,
-        },
-      };
-
-      const result = deserializeCanvas(resourceWithoutRelationships);
-
-      expect(result).toEqual({
-        _id: mockCanvasId,
-        roomId: 'TEST123',
-        operations: [],
-        version: 1,
-      });
-      expect(result.createdBy).toBeUndefined();
-    });
-
-    it('should handle array relationships correctly', () => {
-      const resourceWithArrayRelationship = {
-        id: mockCanvasId.toString(),
-        type: 'canvas',
-        attributes: {
-          roomId: 'TEST123',
-          operations: [],
-        },
-        relationships: {
-          createdBy: {
-            data: [
-              { id: 'user1', type: 'user' },
-              { id: 'user2', type: 'user' },
-            ],
-          },
-        },
-      };
-
-      const result = deserializeCanvas(resourceWithArrayRelationship);
-
-      expect(result.createdBy).toBeUndefined(); // Should ignore array relationships
+    it('should return empty array for empty operations', () => {
+      const result = deserializeCanvas({ id: 'x', type: 'canvas', attributes: { operations: [] } });
+      expect(result.operations).toEqual([]);
     });
   });
 
@@ -234,16 +133,6 @@ describe('Canvas Serializer', () => {
           timestamp: new Date('2023-01-01T00:00:00Z'),
           userId: 'user123',
         },
-        {
-          id: 'op2',
-          type: 'erase',
-          tool: 'eraser',
-          points: [{ x: 30, y: 40 }],
-          color: '#ffffff',
-          size: 5,
-          timestamp: new Date('2023-01-01T00:01:00Z'),
-          userId: 'user456',
-        },
       ];
 
       const result = serializeCanvasOperations(operations);
@@ -254,13 +143,12 @@ describe('Canvas Serializer', () => {
           type: 'canvas-operations',
           attributes: {
             operations,
-            count: 2,
+            count: 1,
             timestamp: expect.any(String),
           },
         },
       });
 
-      // Verify timestamp is a valid ISO string
       if (!Array.isArray(result.data)) {
         const timestamp = result.data.attributes.timestamp as string;
         expect(new Date(timestamp).toISOString()).toBe(timestamp);

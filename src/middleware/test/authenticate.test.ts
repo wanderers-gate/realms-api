@@ -1,11 +1,9 @@
 import type { NextFunction, Request, Response } from 'express';
-import { Types } from 'mongoose';
-import { UserModel } from '../../models/user-model';
 import { getTokenFromHeaders, verifyJwt } from '../../utils/jwt';
 import { authenticateOptionalJwt } from '../optional-auth.middleware';
 
 jest.mock('../../utils/jwt');
-jest.mock('../../models/user-model');
+jest.mock('../../db', () => ({ db: { query: { users: { findFirst: jest.fn() } } } }));
 
 const mockResponse = {} as Response;
 const mockNext = jest.fn() as unknown as NextFunction;
@@ -18,9 +16,8 @@ const mockRequest = (authHeader?: string) =>
   }) as unknown as Request;
 
 describe('authenticateOptionalJwt', () => {
-  const middleware = authenticateOptionalJwt();
-  const userId = new Types.ObjectId();
-  const mockUser = { _id: userId, email: 'test@example.com', firstName: 'Test', lastName: 'User' };
+  const userId = 'user-uuid-123';
+  const mockUser = { id: userId, email: 'test@example.com', firstName: 'Test', lastName: 'User' };
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -30,7 +27,7 @@ describe('authenticateOptionalJwt', () => {
     const req = mockRequest();
     (getTokenFromHeaders as jest.Mock).mockReturnValue(null);
 
-    await middleware(req, mockResponse, mockNext);
+    await authenticateOptionalJwt(req, mockResponse, mockNext);
 
     expect(mockNext).toHaveBeenCalled();
     expect(req.user).toBeUndefined();
@@ -42,7 +39,7 @@ describe('authenticateOptionalJwt', () => {
     (getTokenFromHeaders as jest.Mock).mockReturnValue('bad-token');
     (verifyJwt as jest.Mock).mockReturnValue(null);
 
-    await middleware(req, mockResponse, mockNext);
+    await authenticateOptionalJwt(req, mockResponse, mockNext);
 
     expect(mockNext).toHaveBeenCalled();
     expect(req.user).toBeUndefined();
@@ -50,12 +47,13 @@ describe('authenticateOptionalJwt', () => {
   });
 
   it('calls next without setting user when user is not found in the database', async () => {
+    const { db } = require('../../db');
     const req = mockRequest('Bearer valid-token');
     (getTokenFromHeaders as jest.Mock).mockReturnValue('valid-token');
-    (verifyJwt as jest.Mock).mockReturnValue({ userId: userId.toString(), tokenVersion: 0 });
-    (UserModel.findById as jest.Mock).mockResolvedValue(null);
+    (verifyJwt as jest.Mock).mockReturnValue({ userId, tokenVersion: 0 });
+    db.query.users.findFirst.mockResolvedValue(null);
 
-    await middleware(req, mockResponse, mockNext);
+    await authenticateOptionalJwt(req, mockResponse, mockNext);
 
     expect(mockNext).toHaveBeenCalled();
     expect(req.user).toBeUndefined();
@@ -63,15 +61,16 @@ describe('authenticateOptionalJwt', () => {
   });
 
   it('sets req.user and req.userId when token is valid and user exists', async () => {
+    const { db } = require('../../db');
     const req = mockRequest('Bearer valid-token');
     (getTokenFromHeaders as jest.Mock).mockReturnValue('valid-token');
-    (verifyJwt as jest.Mock).mockReturnValue({ userId: userId.toString(), tokenVersion: 0 });
-    (UserModel.findById as jest.Mock).mockResolvedValue(mockUser);
+    (verifyJwt as jest.Mock).mockReturnValue({ userId, tokenVersion: 0 });
+    db.query.users.findFirst.mockResolvedValue(mockUser);
 
-    await middleware(req, mockResponse, mockNext);
+    await authenticateOptionalJwt(req, mockResponse, mockNext);
 
     expect(mockNext).toHaveBeenCalled();
     expect(req.user).toEqual(mockUser);
-    expect(req.userId).toBe(userId.toString());
+    expect(req.userId).toBe(userId);
   });
 });

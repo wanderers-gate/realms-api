@@ -1,127 +1,82 @@
-import { Types } from 'mongoose';
-import type { RoomDocument } from '../models/room-model';
-import type {
-  JsonApiRelationship,
-  JsonApiResourceObject,
-  JsonApiResponse,
-} from '../types/json-api';
+import type { InferSelectModel } from 'drizzle-orm';
+import type { rooms } from '../db/schema';
+import type { JsonApiResourceObject, JsonApiResponse } from '../types/json-api';
 
-const type = 'room';
-const idField = '_id';
-const attributes = [
-  'name',
-  'description',
-  'roomId',
-  'isActive',
-  'maxPlayers',
-  'currentPlayers',
-  'settings',
-  'createdAt',
-  'updatedAt',
-  'lastActivity',
-] as const;
+export type Room = InferSelectModel<typeof rooms>;
 
-type RoomAttributes = Record<(typeof attributes)[number], unknown>;
-
-export const serializeRoom = (data: RoomDocument | RoomDocument[]): JsonApiResponse => {
-  if (Array.isArray(data)) {
-    return {
-      data: data.map(serializeRoomResource),
-    };
-  }
-  return {
-    data: serializeRoomResource(data),
+type RoomInput = {
+  name?: string;
+  description?: string;
+  maxPlayers?: number;
+  settings?: {
+    isPrivate?: boolean;
+    allowGuests?: boolean;
+    gridSize?: number;
+    gridVisible?: boolean;
+    gridType?: string;
+    snapToGrid?: boolean;
+    gridOpacity?: number;
+    canvasWidth?: number;
+    canvasHeight?: number;
   };
 };
 
-const serializeRoomResource = (data: RoomDocument): JsonApiResourceObject => {
-  const resource: JsonApiResourceObject = {
-    type,
-    id: String(data[idField]),
-    attributes: {},
-  };
+const serializeRoomResource = (room: Room): JsonApiResourceObject => ({
+  id: room.id,
+  type: 'room',
+  attributes: {
+    name: room.name,
+    description: room.description,
+    roomCode: room.roomCode,
+    slug: room.slug,
+    isActive: room.isActive,
+    maxPlayers: room.maxPlayers,
+    currentPlayers: room.currentPlayers,
+    lastActivity: room.lastActivity,
+    createdAt: room.createdAt,
+    updatedAt: room.updatedAt,
+    settings: {
+      isPrivate: room.isPrivate,
+      allowGuests: room.allowGuests,
+      gridSize: room.gridSize,
+      gridVisible: room.gridVisible,
+      gridType: room.gridType,
+      snapToGrid: room.snapToGrid,
+      gridOpacity: room.gridOpacity,
+      canvasWidth: room.canvasWidth,
+      canvasHeight: room.canvasHeight,
+    },
+  },
+  relationships: {
+    createdBy: {
+      data: { type: 'user', id: room.createdById },
+    },
+  },
+});
 
-  // Add attributes
-  for (const attr of attributes) {
-    if (data[attr] !== undefined) {
-      (resource.attributes as RoomAttributes)[attr] = data[attr];
-    }
-  }
-
-  // Add relationships if createdBy is populated
-  if (data.createdBy && typeof data.createdBy === 'object' && 'firstName' in data.createdBy) {
-    resource.relationships = {
-      createdBy: {
-        data: {
-          type: 'user',
-          id: String(data.createdBy._id),
-        },
-      },
-    };
-  } else if (data.createdBy) {
-    resource.relationships = {
-      createdBy: {
-        data: {
-          type: 'user',
-          id: String(data.createdBy),
-        },
-      },
-    };
-  }
-
-  return resource;
-};
-
-export const deserializeRoom = (resource: JsonApiResourceObject): Partial<RoomDocument> => {
-  const result: Partial<RoomDocument> = {};
-
-  // Handle jsona format where data is directly in the resource object
-  // or standard JSON:API format where data is in attributes
-  const dataToProcess = resource.attributes || resource;
-
-  // Extract attributes
-  for (const attr of attributes) {
-    if (attr in dataToProcess) {
-      (result as RoomAttributes)[attr] = (dataToProcess as RoomAttributes)[attr];
-    }
-  }
-
-  // Extract relationships
-  if (resource.relationships?.createdBy?.data) {
-    const createdByData = resource.relationships.createdBy.data;
-    if (Array.isArray(createdByData)) {
-      result.createdBy = new Types.ObjectId(createdByData[0].id);
-    } else {
-      result.createdBy = new Types.ObjectId(createdByData.id);
-    }
-  }
-
-  // Handle createdBy in attributes (for test case)
-  if (resource.attributes?.createdBy && !result.createdBy) {
-    const attributesWithCreatedBy = resource.attributes as RoomAttributes & {
-      createdBy: string | Types.ObjectId;
-    };
-    const createdBy = attributesWithCreatedBy.createdBy;
-    if (typeof createdBy === 'string') {
-      // biome-ignore lint/suspicious/noExplicitAny: This is for test compatibility with string values
-      (result as any).createdBy = createdBy;
-    } else {
-      result.createdBy = createdBy;
-    }
-  }
-
-  return result;
-};
+export const serializeRoom = (data: Room | Room[]): JsonApiResponse => ({
+  data: Array.isArray(data) ? data.map(serializeRoomResource) : serializeRoomResource(data),
+});
 
 export const serializeRoomWithIncludes = (
-  data: RoomDocument | RoomDocument[],
+  data: Room | Room[],
   includes?: Record<string, JsonApiResourceObject>
 ): JsonApiResponse => {
   const response = serializeRoom(data);
-
   if (includes && Object.keys(includes).length > 0) {
     response.included = Object.values(includes);
   }
-
   return response;
+};
+
+export const deserializeRoom = (resource: JsonApiResourceObject): RoomInput => {
+  const data = (resource.attributes || resource) as Record<string, unknown>;
+  const result: RoomInput = {};
+
+  if (data.name !== undefined) result.name = data.name as string;
+  if (data.description !== undefined) result.description = data.description as string;
+  if (data.maxPlayers !== undefined) result.maxPlayers = data.maxPlayers as number;
+  if (data.settings !== undefined) result.settings = data.settings as RoomInput['settings'];
+
+  return result;
 };

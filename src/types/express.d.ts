@@ -1,6 +1,8 @@
-import type { Socket as SocketIOSocket } from 'socket.io';
-import type { UserDocument } from '../models/user-model';
+import type { InferSelectModel } from 'drizzle-orm';
+import type { users } from '../db/schema';
 import type { JsonApiError } from './json-api';
+
+export type User = InferSelectModel<typeof users>;
 
 declare global {
   namespace Express {
@@ -8,7 +10,7 @@ declare global {
       jsonApiError: (_status: number, _errors: JsonApiError[]) => void;
     }
     interface Request {
-      user?: UserDocument;
+      user?: User;
     }
   }
 }

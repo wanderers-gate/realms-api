@@ -1,94 +1,131 @@
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
-import { ChatMessageModel } from '../../models/chat-message-model';
+
+jest.mock('../../db', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Database = require('better-sqlite3');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { drizzle } = require('drizzle-orm/better-sqlite3');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { migrate } = require('drizzle-orm/better-sqlite3/migrator');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const schema = require('../../db/schema');
+  const sqlite = new Database(':memory:');
+  sqlite.pragma('foreign_keys = ON');
+  const db = drizzle(sqlite, { schema });
+  migrate(db, { migrationsFolder: path.join(__dirname, '../../../drizzle') });
+  return { db };
+});
+
+import { db } from '../../db';
+import { chatMessages, rooms, users } from '../../db/schema';
 import { chatService } from '../chat.service';
 
+let testRoomId: string;
+
+// Insert messages with explicit staggered timestamps so ordering is deterministic
+// (timestamp mode stores seconds — messages within the same second are unordered)
+const insertMessage = (message: string, secondsOffset: number) =>
+  db.insert(chatMessages).values({
+    roomId: testRoomId,
+    userId: 'user1',
+    username: 'User1',
+    message,
+    timestamp: new Date(Date.now() + secondsOffset * 1000),
+  }).returning().then(([m]) => m);
+
+beforeEach(async () => {
+  const [user] = await db.insert(users).values({
+    email: 'test@example.com',
+    password: 'hashed',
+    firstName: 'Test',
+    lastName: 'User',
+  }).returning();
+
+  const [room] = await db.insert(rooms).values({
+    name: 'Test Room',
+    slug: 'test-room',
+    roomCode: 'TST001',
+    createdById: user.id,
+  }).returning();
+
+  testRoomId = room.id;
+});
+
+afterEach(async () => {
+  await db.delete(chatMessages);
+  await db.delete(rooms);
+  await db.delete(users);
+});
+
 describe('Chat Service', () => {
-  let mongoServer: MongoMemoryServer;
-
-  beforeEach(async () => {
-    mongoServer = await MongoMemoryServer.create();
-    const mongoUri = mongoServer.getUri();
-    await mongoose.connect(mongoUri);
-  });
-
-  afterEach(async () => {
-    await mongoose.disconnect();
-    await mongoServer.stop();
-  });
-
   describe('saveMessage', () => {
-    it('should save a message to the database', async () => {
-      const roomId = 'TEST123';
-      const userId = 'user123';
-      const username = 'TestUser';
-      const message = 'Hello, world!';
+    it('should save a message and return it', async () => {
+      const msg = await chatService.saveMessage(testRoomId, 'user-123', 'TestUser', 'Hello!');
 
-      const savedMessage = await chatService.saveMessage(roomId, userId, username, message);
+      expect(msg.roomId).toBe(testRoomId);
+      expect(msg.userId).toBe('user-123');
+      expect(msg.username).toBe('TestUser');
+      expect(msg.message).toBe('Hello!');
+      expect(msg.timestamp).toBeInstanceOf(Date);
+      expect(msg.id).toBeDefined();
+    });
 
-      expect(savedMessage.roomId).toBe(roomId);
-      expect(savedMessage.userId).toBe(userId);
-      expect(savedMessage.username).toBe(username);
-      expect(savedMessage.message).toBe(message);
-      expect(savedMessage.timestamp).toBeInstanceOf(Date);
+    it('should save a message with a dice roll', async () => {
+      const diceRoll = { notation: '1d6', groups: [], modifier: 0, total: 4 };
+      const msg = await chatService.saveMessage(testRoomId, 'user-123', 'TestUser', '/roll 1d6', diceRoll);
+
+      expect(msg.diceRoll).toEqual(diceRoll);
     });
   });
 
   describe('getRecentMessages', () => {
-    it('should return recent messages for a room', async () => {
-      const roomId = 'TEST123';
-
-      // Create some test messages
-      const messages = [
-        { roomId, userId: 'user1', username: 'User1', message: 'Message 1' },
-        { roomId, userId: 'user2', username: 'User2', message: 'Message 2' },
-        { roomId, userId: 'user1', username: 'User1', message: 'Message 3' },
-      ];
-
-      for (const msg of messages) {
-        await chatService.saveMessage(msg.roomId, msg.userId, msg.username, msg.message);
+    beforeEach(async () => {
+      for (let i = 1; i <= 5; i++) {
+        await insertMessage(`Message ${i}`, i);
       }
-
-      const recentMessages = await chatService.getRecentMessages(roomId, 10);
-
-      expect(recentMessages).toHaveLength(3);
-      expect(recentMessages[0].message).toBe('Message 1');
-      expect(recentMessages[1].message).toBe('Message 2');
-      expect(recentMessages[2].message).toBe('Message 3');
     });
 
-    it('should limit the number of messages returned', async () => {
-      const roomId = 'TEST123';
+    it('should return messages in chronological order', async () => {
+      const messages = await chatService.getRecentMessages(testRoomId, 10);
 
-      // Create 5 test messages
-      for (let i = 1; i <= 5; i++) {
-        await chatService.saveMessage(roomId, `user${i}`, `User${i}`, `Message ${i}`);
-      }
+      expect(messages).toHaveLength(5);
+      expect(messages[0].message).toBe('Message 1');
+      expect(messages[4].message).toBe('Message 5');
+    });
 
-      const recentMessages = await chatService.getRecentMessages(roomId, 3);
+    it('should respect the limit and return the most recent', async () => {
+      const messages = await chatService.getRecentMessages(testRoomId, 3);
 
-      expect(recentMessages).toHaveLength(3);
-      expect(recentMessages[0].message).toBe('Message 3');
-      expect(recentMessages[1].message).toBe('Message 4');
-      expect(recentMessages[2].message).toBe('Message 5');
+      expect(messages).toHaveLength(3);
+      expect(messages[0].message).toBe('Message 3');
+      expect(messages[2].message).toBe('Message 5');
+    });
+
+    it('should return empty array for unknown room', async () => {
+      const messages = await chatService.getRecentMessages('nonexistent-room-id');
+      expect(messages).toHaveLength(0);
     });
   });
 
-  describe('cleanupOldMessages', () => {
-    it('should remove old messages when limit is exceeded', async () => {
-      const roomId = 'TEST123';
-
-      // Create 15 test messages
-      for (let i = 1; i <= 15; i++) {
-        await chatService.saveMessage(roomId, `user${i}`, `User${i}`, `Message ${i}`);
+  describe('getMessagesBefore', () => {
+    it('should return messages before the given message id', async () => {
+      const msgs = [];
+      for (let i = 1; i <= 5; i++) {
+        msgs.push(await insertMessage(`Message ${i}`, i));
       }
 
-      // Clean up old messages, keep only 10
-      await chatService.cleanupOldMessages(roomId, 10);
+      // beforeId = msgs[2] (Message 3) → should return Messages 1 and 2
+      const older = await chatService.getMessagesBefore(testRoomId, msgs[2].id, 10);
 
-      const remainingMessages = await chatService.getRecentMessages(roomId, 20);
-      expect(remainingMessages.length).toBeLessThanOrEqual(10);
+      expect(older).toHaveLength(2);
+      expect(older[0].message).toBe('Message 1');
+      expect(older[1].message).toBe('Message 2');
+    });
+
+    it('should return empty array for unknown beforeId', async () => {
+      const result = await chatService.getMessagesBefore(testRoomId, 'nonexistent-id', 10);
+      expect(result).toHaveLength(0);
     });
   });
 });
