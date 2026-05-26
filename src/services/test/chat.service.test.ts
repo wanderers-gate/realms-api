@@ -26,28 +26,38 @@ let testRoomId: string;
 // Insert messages with explicit staggered timestamps so ordering is deterministic
 // (timestamp mode stores seconds — messages within the same second are unordered)
 const insertMessage = (message: string, secondsOffset: number) =>
-  db.insert(chatMessages).values({
-    roomId: testRoomId,
-    userId: 'user1',
-    username: 'User1',
-    message,
-    timestamp: new Date(Date.now() + secondsOffset * 1000),
-  }).returning().then(([m]) => m);
+  db
+    .insert(chatMessages)
+    .values({
+      roomId: testRoomId,
+      userId: 'user1',
+      username: 'User1',
+      message,
+      timestamp: new Date(Date.now() + secondsOffset * 1000),
+    })
+    .returning()
+    .then(([m]) => m);
 
 beforeEach(async () => {
-  const [user] = await db.insert(users).values({
-    email: 'test@example.com',
-    password: 'hashed',
-    firstName: 'Test',
-    lastName: 'User',
-  }).returning();
+  const [user] = await db
+    .insert(users)
+    .values({
+      email: 'test@example.com',
+      password: 'hashed',
+      firstName: 'Test',
+      lastName: 'User',
+    })
+    .returning();
 
-  const [room] = await db.insert(rooms).values({
-    name: 'Test Room',
-    slug: 'test-room',
-    roomCode: 'TST001',
-    createdById: user.id,
-  }).returning();
+  const [room] = await db
+    .insert(rooms)
+    .values({
+      name: 'Test Room',
+      slug: 'test-room',
+      roomCode: 'TST001',
+      createdById: user.id,
+    })
+    .returning();
 
   testRoomId = room.id;
 });
@@ -73,7 +83,13 @@ describe('Chat Service', () => {
 
     it('should save a message with a dice roll', async () => {
       const diceRoll = { notation: '1d6', groups: [], modifier: 0, total: 4 };
-      const msg = await chatService.saveMessage(testRoomId, 'user-123', 'TestUser', '/roll 1d6', diceRoll);
+      const msg = await chatService.saveMessage(
+        testRoomId,
+        'user-123',
+        'TestUser',
+        '/roll 1d6',
+        diceRoll
+      );
 
       expect(msg.diceRoll).toEqual(diceRoll);
     });

@@ -1,5 +1,5 @@
-import { and, eq } from 'drizzle-orm';
 import { createServer } from 'node:http';
+import { and, eq } from 'drizzle-orm';
 import { Server, type Socket } from 'socket.io';
 import config from './config/config';
 import runMigrations from './config/database';
@@ -140,14 +140,21 @@ io.on('connection', (socket: Socket) => {
           return;
         }
 
-        await db.insert(userPermissions)
-          .values({ roomId: data.roomId, userId: data.targetUserId, canModifyDrawings: data.canModifyDrawings })
+        await db
+          .insert(userPermissions)
+          .values({
+            roomId: data.roomId,
+            userId: data.targetUserId,
+            canModifyDrawings: data.canModifyDrawings,
+          })
           .onConflictDoUpdate({
             target: [userPermissions.roomId, userPermissions.userId],
             set: { canModifyDrawings: data.canModifyDrawings },
           });
 
-        logger.info(`[PERMISSIONS] Updated permissions for ${data.targetUserId} in room ${data.roomId}`);
+        logger.info(
+          `[PERMISSIONS] Updated permissions for ${data.targetUserId} in room ${data.roomId}`
+        );
 
         io.to(data.roomId).emit('permissions-updated', {
           targetUserId: data.targetUserId,

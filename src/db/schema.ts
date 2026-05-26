@@ -72,7 +72,9 @@ export const chatMessages = sqliteTable('chat_messages', {
   username: text('username').notNull(),
   message: text('message').notNull(),
   diceRoll: text('dice_roll', { mode: 'json' }),
-  timestamp: integer('timestamp', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  timestamp: integer('timestamp', { mode: 'timestamp' })
+    .notNull()
+    .$defaultFn(() => new Date()),
 });
 
 export const canvases = sqliteTable('canvases', {

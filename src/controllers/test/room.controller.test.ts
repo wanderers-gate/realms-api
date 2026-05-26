@@ -228,14 +228,17 @@ describe('Room Controller', () => {
 
     beforeEach(async () => {
       testRoomCode = 'GET001';
-      const [room] = await db.insert(rooms).values({
-        name: 'Get Test Room',
-        slug: 'get-test-room',
-        roomCode: testRoomCode,
-        createdById: testUserId,
-        isActive: true,
-        allowGuests: true,
-      }).returning();
+      const [room] = await db
+        .insert(rooms)
+        .values({
+          name: 'Get Test Room',
+          slug: 'get-test-room',
+          roomCode: testRoomCode,
+          createdById: testUserId,
+          isActive: true,
+          allowGuests: true,
+        })
+        .returning();
       testRoomId = room.id;
     });
 
@@ -265,14 +268,17 @@ describe('Room Controller', () => {
     });
 
     it('should return 403 for guest-restricted room when unauthenticated', async () => {
-      const [privateRoom] = await db.insert(rooms).values({
-        name: 'No Guest',
-        slug: 'no-guest',
-        roomCode: 'NGR002',
-        createdById: testUserId,
-        isActive: true,
-        allowGuests: false,
-      }).returning();
+      const [privateRoom] = await db
+        .insert(rooms)
+        .values({
+          name: 'No Guest',
+          slug: 'no-guest',
+          roomCode: 'NGR002',
+          createdById: testUserId,
+          isActive: true,
+          allowGuests: false,
+        })
+        .returning();
 
       const req = mockRequest({}, { roomId: privateRoom.id });
       const res = mockResponse();
@@ -304,13 +310,16 @@ describe('Room Controller', () => {
     let testRoomId: string;
 
     beforeEach(async () => {
-      const [room] = await db.insert(rooms).values({
-        name: 'Original Name',
-        slug: 'original-name',
-        roomCode: 'UPD001',
-        createdById: testUserId,
-        isActive: true,
-      }).returning();
+      const [room] = await db
+        .insert(rooms)
+        .values({
+          name: 'Original Name',
+          slug: 'original-name',
+          roomCode: 'UPD001',
+          createdById: testUserId,
+          isActive: true,
+        })
+        .returning();
       testRoomId = room.id;
     });
 
@@ -375,13 +384,16 @@ describe('Room Controller', () => {
     let testRoomId: string;
 
     beforeEach(async () => {
-      const [room] = await db.insert(rooms).values({
-        name: 'Delete Me',
-        slug: 'delete-me',
-        roomCode: 'DEL001',
-        createdById: testUserId,
-        isActive: true,
-      }).returning();
+      const [room] = await db
+        .insert(rooms)
+        .values({
+          name: 'Delete Me',
+          slug: 'delete-me',
+          roomCode: 'DEL001',
+          createdById: testUserId,
+          isActive: true,
+        })
+        .returning();
       testRoomId = room.id;
     });
 

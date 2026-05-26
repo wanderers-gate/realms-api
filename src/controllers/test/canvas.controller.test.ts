@@ -34,28 +34,34 @@ const mockRequest = (
   body: Record<string, unknown> = {},
   params: Record<string, string> = {},
   userId?: string
-) => ({ body, params, userId, user: undefined } as unknown as Request);
+) => ({ body, params, userId, user: undefined }) as unknown as Request;
 
 let testUserId: string;
 let testRoomId: string;
 
 beforeEach(async () => {
-  const [user] = await db.insert(users).values({
-    email: 'test@example.com',
-    password: 'hashed',
-    firstName: 'Test',
-    lastName: 'User',
-  }).returning();
+  const [user] = await db
+    .insert(users)
+    .values({
+      email: 'test@example.com',
+      password: 'hashed',
+      firstName: 'Test',
+      lastName: 'User',
+    })
+    .returning();
   testUserId = user.id;
 
-  const [room] = await db.insert(rooms).values({
-    name: 'Test Room',
-    slug: 'test-room',
-    roomCode: 'TST001',
-    createdById: testUserId,
-    isActive: true,
-    allowGuests: true,
-  }).returning();
+  const [room] = await db
+    .insert(rooms)
+    .values({
+      name: 'Test Room',
+      slug: 'test-room',
+      roomCode: 'TST001',
+      createdById: testUserId,
+      isActive: true,
+      allowGuests: true,
+    })
+    .returning();
   testRoomId = room.id;
 });
 
@@ -69,10 +75,13 @@ afterEach(async () => {
 describe('Canvas Controller', () => {
   describe('getCanvas', () => {
     it('should return existing canvas for a room', async () => {
-      const [canvas] = await db.insert(canvases).values({
-        roomId: testRoomId,
-        createdById: testUserId,
-      }).returning();
+      const [canvas] = await db
+        .insert(canvases)
+        .values({
+          roomId: testRoomId,
+          createdById: testUserId,
+        })
+        .returning();
 
       await db.insert(canvasOperations).values({
         canvasId: canvas.id,
@@ -138,14 +147,17 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 403 for room that does not allow guests', async () => {
-      const [privateRoom] = await db.insert(rooms).values({
-        name: 'Private Room',
-        slug: 'private-room',
-        roomCode: 'PRV001',
-        createdById: testUserId,
-        isActive: true,
-        allowGuests: false,
-      }).returning();
+      const [privateRoom] = await db
+        .insert(rooms)
+        .values({
+          name: 'Private Room',
+          slug: 'private-room',
+          roomCode: 'PRV001',
+          createdById: testUserId,
+          isActive: true,
+          allowGuests: false,
+        })
+        .returning();
 
       const req = mockRequest({}, { roomId: privateRoom.id });
       const res = mockResponse();
@@ -166,13 +178,18 @@ describe('Canvas Controller', () => {
           data: {
             type: 'canvas',
             attributes: {
-              operations: [{
-                type: 'draw',
-                tool: 'pen',
-                points: [{ x: 10, y: 20 }, { x: 30, y: 40 }],
-                color: '#ff0000',
-                size: 3,
-              }],
+              operations: [
+                {
+                  type: 'draw',
+                  tool: 'pen',
+                  points: [
+                    { x: 10, y: 20 },
+                    { x: 30, y: 40 },
+                  ],
+                  color: '#ff0000',
+                  size: 3,
+                },
+              ],
             },
           },
         },
@@ -208,14 +225,25 @@ describe('Canvas Controller', () => {
 
       const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, testRoomId) });
       expect(canvas).toBeTruthy();
-      const ops = await db.select().from(canvasOperations).where(eq(canvasOperations.canvasId, canvas!.id));
+      if (!canvas) return;
+      const ops = await db
+        .select()
+        .from(canvasOperations)
+        .where(eq(canvasOperations.canvasId, canvas.id));
       expect(ops).toHaveLength(1);
       expect(ops[0].type).toBe('draw');
     });
 
     it('should return 401 if user is not authenticated', async () => {
       const req = mockRequest(
-        { data: { type: 'canvas', attributes: { operations: [{ type: 'draw', tool: 'pen', points: [], color: '#000000', size: 2 }] } } },
+        {
+          data: {
+            type: 'canvas',
+            attributes: {
+              operations: [{ type: 'draw', tool: 'pen', points: [], color: '#000000', size: 2 }],
+            },
+          },
+        },
         { roomId: testRoomId }
       );
       const res = mockResponse();
@@ -227,7 +255,14 @@ describe('Canvas Controller', () => {
 
     it('should return 404 for non-existent room', async () => {
       const req = mockRequest(
-        { data: { type: 'canvas', attributes: { operations: [{ type: 'draw', tool: 'pen', points: [], color: '#000000', size: 2 }] } } },
+        {
+          data: {
+            type: 'canvas',
+            attributes: {
+              operations: [{ type: 'draw', tool: 'pen', points: [], color: '#000000', size: 2 }],
+            },
+          },
+        },
         { roomId: 'nonexistent-uuid' },
         testUserId
       );
@@ -259,15 +294,38 @@ describe('Canvas Controller', () => {
     let canvasId: string;
 
     beforeEach(async () => {
-      const [canvas] = await db.insert(canvases).values({
-        roomId: testRoomId,
-        createdById: testUserId,
-      }).returning();
+      const [canvas] = await db
+        .insert(canvases)
+        .values({
+          roomId: testRoomId,
+          createdById: testUserId,
+        })
+        .returning();
       canvasId = canvas.id;
 
       await db.insert(canvasOperations).values([
-        { canvasId, opId: 'op-1', type: 'draw', tool: 'pen', points: [{ x: 0, y: 0 }], color: '#000000', size: 2, userId: testUserId, timestamp: new Date() },
-        { canvasId, opId: 'op-2', type: 'draw', tool: 'pen', points: [{ x: 10, y: 10 }], color: '#ff0000', size: 3, userId: testUserId, timestamp: new Date() },
+        {
+          canvasId,
+          opId: 'op-1',
+          type: 'draw',
+          tool: 'pen',
+          points: [{ x: 0, y: 0 }],
+          color: '#000000',
+          size: 2,
+          userId: testUserId,
+          timestamp: new Date(),
+        },
+        {
+          canvasId,
+          opId: 'op-2',
+          type: 'draw',
+          tool: 'pen',
+          points: [{ x: 10, y: 10 }],
+          color: '#ff0000',
+          size: 3,
+          userId: testUserId,
+          timestamp: new Date(),
+        },
       ]);
     });
 
@@ -280,7 +338,10 @@ describe('Canvas Controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({ data: { deletedCount: 1, remainingOperations: 1 } });
 
-      const remaining = await db.select().from(canvasOperations).where(eq(canvasOperations.canvasId, canvasId));
+      const remaining = await db
+        .select()
+        .from(canvasOperations)
+        .where(eq(canvasOperations.canvasId, canvasId));
       expect(remaining).toHaveLength(1);
       expect(remaining[0].opId).toBe('op-2');
     });
@@ -295,7 +356,11 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 404 when room does not exist', async () => {
-      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: 'nonexistent-uuid' }, testUserId);
+      const req = mockRequest(
+        { operationIds: ['op-1'] },
+        { roomId: 'nonexistent-uuid' },
+        testUserId
+      );
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
@@ -314,7 +379,9 @@ describe('Canvas Controller', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'Operation IDs array is required' }],
+        errors: [
+          { status: '400', title: 'Bad Request', detail: 'Operation IDs array is required' },
+        ],
       });
     });
 
@@ -338,12 +405,18 @@ describe('Canvas Controller', () => {
 
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
-        errors: [{ status: '404', title: 'Canvas Not Found', detail: 'Canvas not found for this room' }],
+        errors: [
+          { status: '404', title: 'Canvas Not Found', detail: 'Canvas not found for this room' },
+        ],
       });
     });
 
     it('should return 0 deletedCount when operationIds do not match any operations', async () => {
-      const req = mockRequest({ operationIds: ['nonexistent-id'] }, { roomId: testRoomId }, testUserId);
+      const req = mockRequest(
+        { operationIds: ['nonexistent-id'] },
+        { roomId: testRoomId },
+        testUserId
+      );
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);

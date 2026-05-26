@@ -42,9 +42,7 @@ export const serializeCanvas = (canvas: Canvas, operations: CanvasOp[]): JsonApi
 export const deserializeCanvas = (resource: JsonApiResourceObject): DeserializedCanvas => {
   const data = (resource.attributes || resource) as Record<string, unknown>;
   return {
-    operations: Array.isArray(data.operations)
-      ? (data.operations as CanvasOperation[])
-      : undefined,
+    operations: Array.isArray(data.operations) ? (data.operations as CanvasOperation[]) : undefined,
   };
 };
 

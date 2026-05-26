@@ -38,20 +38,26 @@ describe('Canvas Socket Events', () => {
   jest.setTimeout(30000);
 
   beforeAll(async () => {
-    const [user] = await db.insert(users).values({
-      email: 'test@example.com',
-      password: 'password123',
-      firstName: 'Test',
-      lastName: 'User',
-    }).returning();
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: 'test@example.com',
+        password: 'password123',
+        firstName: 'Test',
+        lastName: 'User',
+      })
+      .returning();
     testUserId = user.id;
 
-    const [room] = await db.insert(rooms).values({
-      name: 'Test Room',
-      slug: 'test-room',
-      roomCode: 'TST001',
-      createdById: testUserId,
-    }).returning();
+    const [room] = await db
+      .insert(rooms)
+      .values({
+        name: 'Test Room',
+        slug: 'test-room',
+        roomCode: 'TST001',
+        createdById: testUserId,
+      })
+      .returning();
     testRoomId = room.id;
 
     httpServer = createServer(app);
@@ -76,8 +82,13 @@ describe('Canvas Socket Events', () => {
               where: eq(rooms.id, drawingEvent.roomId),
             });
             const createdById = room?.createdById ?? testUserId;
-            await db.insert(canvases).values({ roomId: drawingEvent.roomId, createdById }).onConflictDoNothing();
-            canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, drawingEvent.roomId) });
+            await db
+              .insert(canvases)
+              .values({ roomId: drawingEvent.roomId, createdById })
+              .onConflictDoNothing();
+            canvas = await db.query.canvases.findFirst({
+              where: eq(canvases.roomId, drawingEvent.roomId),
+            });
             if (!canvas) return;
           }
 
@@ -120,12 +131,15 @@ describe('Canvas Socket Events', () => {
         try {
           const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
           if (canvas) {
-            const ops = await db.select()
+            const ops = await db
+              .select()
               .from(canvasOperations)
               .where(eq(canvasOperations.canvasId, canvas.id))
               .orderBy(asc(canvasOperations.timestamp));
             if (ops.length > 0) {
-              await db.delete(canvasOperations).where(eq(canvasOperations.id, ops[ops.length - 1].id));
+              await db
+                .delete(canvasOperations)
+                .where(eq(canvasOperations.id, ops[ops.length - 1].id));
             }
           }
           io.to(roomId).emit('canvas-undo', roomId);
@@ -189,23 +203,26 @@ describe('Canvas Socket Events', () => {
         roomId: testRoomId,
         userId: testUserId,
         tool: 'pen',
-        points: [{ x: 10, y: 20 }, { x: 30, y: 40 }],
+        points: [
+          { x: 10, y: 20 },
+          { x: 30, y: 40 },
+        ],
         color: '#000000',
         size: 2,
       };
 
-      const broadcastReceived = new Promise<DrawingEvent & { operationId: string; timestamp: Date }>(
-        (resolve, reject) => {
-          const timeout = setTimeout(
-            () => reject(new Error('Timeout: canvas-draw not broadcast')),
-            5000
-          );
-          clientSocket2.on('canvas-draw', (event) => {
-            clearTimeout(timeout);
-            resolve(event);
-          });
-        }
-      );
+      const broadcastReceived = new Promise<
+        DrawingEvent & { operationId: string; timestamp: Date }
+      >((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error('Timeout: canvas-draw not broadcast')),
+          5000
+        );
+        clientSocket2.on('canvas-draw', (event) => {
+          clearTimeout(timeout);
+          resolve(event);
+        });
+      });
 
       clientSocket.emit('canvas-draw', drawingEvent);
       const broadcastEvent = await broadcastReceived;
@@ -225,12 +242,15 @@ describe('Canvas Socket Events', () => {
     });
 
     it('should create new canvas if none exists', async () => {
-      const [extraRoom] = await db.insert(rooms).values({
-        name: 'New Room',
-        slug: 'new-room',
-        roomCode: 'NEW001',
-        createdById: testUserId,
-      }).returning();
+      const [extraRoom] = await db
+        .insert(rooms)
+        .values({
+          name: 'New Room',
+          slug: 'new-room',
+          roomCode: 'NEW001',
+          createdById: testUserId,
+        })
+        .returning();
 
       const drawingEvent: DrawingEvent = {
         type: 'draw',
@@ -248,20 +268,33 @@ describe('Canvas Socket Events', () => {
       const ops = await getOpsForRoom(extraRoom.id);
       expect(ops).toHaveLength(1);
 
-      const extraCanvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, extraRoom.id) });
-      if (extraCanvas) await db.delete(canvasOperations).where(eq(canvasOperations.canvasId, extraCanvas.id));
+      const extraCanvas = await db.query.canvases.findFirst({
+        where: eq(canvases.roomId, extraRoom.id),
+      });
+      if (extraCanvas)
+        await db.delete(canvasOperations).where(eq(canvasOperations.canvasId, extraCanvas.id));
       await db.delete(canvases).where(eq(canvases.roomId, extraRoom.id));
       await db.delete(rooms).where(eq(rooms.id, extraRoom.id));
     });
 
     it('should handle multiple drawing operations', async () => {
       const event1: DrawingEvent = {
-        type: 'draw', roomId: testRoomId, userId: testUserId,
-        tool: 'pen', points: [{ x: 10, y: 20 }], color: '#000000', size: 2,
+        type: 'draw',
+        roomId: testRoomId,
+        userId: testUserId,
+        tool: 'pen',
+        points: [{ x: 10, y: 20 }],
+        color: '#000000',
+        size: 2,
       };
       const event2: DrawingEvent = {
-        type: 'erase', roomId: testRoomId, userId: testUserId,
-        tool: 'eraser', points: [{ x: 30, y: 40 }], color: '#ffffff', size: 5,
+        type: 'erase',
+        roomId: testRoomId,
+        userId: testUserId,
+        tool: 'eraser',
+        points: [{ x: 30, y: 40 }],
+        color: '#ffffff',
+        size: 5,
       };
 
       clientSocket.emit('canvas-draw', event1);
@@ -279,8 +312,13 @@ describe('Canvas Socket Events', () => {
   describe('canvas-clear event', () => {
     it('should clear canvas operations and broadcast to other users', async () => {
       const drawingEvent: DrawingEvent = {
-        type: 'draw', roomId: testRoomId, userId: testUserId,
-        tool: 'pen', points: [{ x: 10, y: 20 }], color: '#000000', size: 2,
+        type: 'draw',
+        roomId: testRoomId,
+        userId: testUserId,
+        tool: 'pen',
+        points: [{ x: 10, y: 20 }],
+        color: '#000000',
+        size: 2,
       };
 
       clientSocket.emit('canvas-draw', drawingEvent);
@@ -320,12 +358,22 @@ describe('Canvas Socket Events', () => {
   describe('canvas-undo event', () => {
     it('should remove last operation and broadcast to other users', async () => {
       const event1: DrawingEvent = {
-        type: 'draw', roomId: testRoomId, userId: testUserId,
-        tool: 'pen', points: [{ x: 10, y: 20 }], color: '#000000', size: 2,
+        type: 'draw',
+        roomId: testRoomId,
+        userId: testUserId,
+        tool: 'pen',
+        points: [{ x: 10, y: 20 }],
+        color: '#000000',
+        size: 2,
       };
       const event2: DrawingEvent = {
-        type: 'draw', roomId: testRoomId, userId: testUserId,
-        tool: 'pen', points: [{ x: 30, y: 40 }], color: '#ff0000', size: 3,
+        type: 'draw',
+        roomId: testRoomId,
+        userId: testUserId,
+        tool: 'pen',
+        points: [{ x: 30, y: 40 }],
+        color: '#ff0000',
+        size: 3,
       };
 
       clientSocket.emit('canvas-draw', event1);
@@ -363,8 +411,13 @@ describe('Canvas Socket Events', () => {
   describe('error handling', () => {
     it('should handle database errors gracefully', async () => {
       const drawingEvent: DrawingEvent = {
-        type: 'draw', roomId: testRoomId, userId: testUserId,
-        tool: 'pen', points: [{ x: 10, y: 20 }], color: '#000000', size: 2,
+        type: 'draw',
+        roomId: testRoomId,
+        userId: testUserId,
+        tool: 'pen',
+        points: [{ x: 10, y: 20 }],
+        color: '#000000',
+        size: 2,
       };
 
       expect(() => {

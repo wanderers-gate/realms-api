@@ -196,10 +196,12 @@ export const getRoom = async (req: Request, res: Response) => {
       .select({ room: rooms, creator: users })
       .from(rooms)
       .leftJoin(users, eq(rooms.createdById, users.id))
-      .where(and(
-        or(eq(rooms.id, roomId), eq(rooms.roomCode, roomId.toUpperCase())),
-        eq(rooms.isActive, true)
-      ))
+      .where(
+        and(
+          or(eq(rooms.id, roomId), eq(rooms.roomCode, roomId.toUpperCase())),
+          eq(rooms.isActive, true)
+        )
+      )
       .limit(1);
 
     if (!result.length) {

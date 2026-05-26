@@ -14,27 +14,27 @@ export const chatService = {
     message: string,
     diceRoll?: DiceRollResult
   ): Promise<ChatMessage> {
-    const [msg] = await db.insert(chatMessages).values({
-      roomId,
-      userId,
-      username,
-      message,
-      diceRoll: diceRoll ?? null,
-    }).returning();
+    const [msg] = await db
+      .insert(chatMessages)
+      .values({
+        roomId,
+        userId,
+        username,
+        message,
+        diceRoll: diceRoll ?? null,
+      })
+      .returning();
     return msg;
   },
 
-  async getMessagesBefore(
-    roomId: string,
-    beforeId: string,
-    limit = 50
-  ): Promise<ChatMessage[]> {
+  async getMessagesBefore(roomId: string, beforeId: string, limit = 50): Promise<ChatMessage[]> {
     const ref = await db.query.chatMessages.findFirst({
       where: eq(chatMessages.id, beforeId),
     });
     if (!ref?.timestamp) return [];
 
-    const messages = await db.select()
+    const messages = await db
+      .select()
       .from(chatMessages)
       .where(and(eq(chatMessages.roomId, roomId), lt(chatMessages.timestamp, ref.timestamp)))
       .orderBy(desc(chatMessages.timestamp))
@@ -44,7 +44,8 @@ export const chatService = {
   },
 
   async getRecentMessages(roomId: string, limit = 50): Promise<ChatMessage[]> {
-    const messages = await db.select()
+    const messages = await db
+      .select()
       .from(chatMessages)
       .where(eq(chatMessages.roomId, roomId))
       .orderBy(desc(chatMessages.timestamp))
@@ -52,5 +53,4 @@ export const chatService = {
 
     return messages.reverse();
   },
-
 };

@@ -26,7 +26,10 @@ async function getOrCreateCanvas(roomId: string) {
   const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
   if (!room) return null;
 
-  const [canvas] = await db.insert(canvases).values({ roomId, createdById: room.createdById }).returning();
+  const [canvas] = await db
+    .insert(canvases)
+    .values({ roomId, createdById: room.createdById })
+    .returning();
   return canvas;
 }
 
@@ -38,7 +41,10 @@ async function getRoomPermissions(roomId: string, authenticatedUserId: string | 
 
   const permission = authenticatedUserId
     ? await db.query.userPermissions.findFirst({
-        where: and(eq(userPermissions.roomId, roomId), eq(userPermissions.userId, authenticatedUserId)),
+        where: and(
+          eq(userPermissions.roomId, roomId),
+          eq(userPermissions.userId, authenticatedUserId)
+        ),
       })
     : undefined;
 
@@ -70,7 +76,8 @@ export async function savePendingOperations(roomId: string): Promise<void> {
       }))
     );
 
-    await db.update(canvases)
+    await db
+      .update(canvases)
       .set({ lastModified: new Date(), version: canvas.version + 1 })
       .where(eq(canvases.id, canvas.id));
 
@@ -81,7 +88,9 @@ export async function savePendingOperations(roomId: string): Promise<void> {
     const currentOps = pendingCanvasOperations.get(roomId) || [];
     if (currentOps.length > 1000) {
       pendingCanvasOperations.set(roomId, currentOps.slice(-100));
-      logger.warn(`[CANVAS] Trimmed pending operations for room ${roomId} due to repeated failures`);
+      logger.warn(
+        `[CANVAS] Trimmed pending operations for room ${roomId} due to repeated failures`
+      );
     }
   }
 }
@@ -91,7 +100,8 @@ export async function loadExistingCanvas(roomId: string): Promise<CanvasOperatio
     const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
     if (!canvas) return [];
 
-    const ops = await db.select()
+    const ops = await db
+      .select()
       .from(canvasOperations)
       .where(eq(canvasOperations.canvasId, canvas.id))
       .orderBy(asc(canvasOperations.timestamp));
@@ -166,29 +176,42 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
   });
 
   socket.on('canvas-delete', async (data: { roomId: string; operationIds: string[] }) => {
-    logger.info(`[CANVAS] Received delete event from ${socket.id} in room ${data.roomId} for ${data.operationIds.length} operations`);
+    logger.info(
+      `[CANVAS] Received delete event from ${socket.id} in room ${data.roomId} for ${data.operationIds.length} operations`
+    );
     try {
       await savePendingOperations(data.roomId);
 
       const requesterUserId = socket.authenticatedUserId || socket.id;
-      const { isDM, hasModifyPermission } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
+      const { isDM, hasModifyPermission } = await getRoomPermissions(
+        data.roomId,
+        socket.authenticatedUserId
+      );
 
       const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, data.roomId) });
       if (!canvas) return;
 
-      const opsToDelete = await db.select()
+      const opsToDelete = await db
+        .select()
         .from(canvasOperations)
-        .where(and(
-          eq(canvasOperations.canvasId, canvas.id),
-          inArray(canvasOperations.opId, data.operationIds)
-        ));
+        .where(
+          and(
+            eq(canvasOperations.canvasId, canvas.id),
+            inArray(canvasOperations.opId, data.operationIds)
+          )
+        );
 
       const allowed = opsToDelete.filter(
         (op) => isDM || hasModifyPermission || op.userId === requesterUserId
       );
       if (allowed.length === 0) return;
 
-      await db.delete(canvasOperations).where(inArray(canvasOperations.id, allowed.map((op) => op.id)));
+      await db.delete(canvasOperations).where(
+        inArray(
+          canvasOperations.id,
+          allowed.map((op) => op.id)
+        )
+      );
       logger.info(`[CANVAS] Deleted ${allowed.length} operations for room ${data.roomId}`);
 
       socket.to(data.roomId).emit('canvas-delete', {
@@ -201,35 +224,49 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
     }
   });
 
-  socket.on('shape-move', async (data: { roomId: string; operationId: string; dx: number; dy: number }) => {
-    try {
-      await savePendingOperations(data.roomId);
+  socket.on(
+    'shape-move',
+    async (data: { roomId: string; operationId: string; dx: number; dy: number }) => {
+      try {
+        await savePendingOperations(data.roomId);
 
-      const requesterUserId = socket.authenticatedUserId || socket.id;
-      const { isDM, hasModifyPermission } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
+        const requesterUserId = socket.authenticatedUserId || socket.id;
+        const { isDM, hasModifyPermission } = await getRoomPermissions(
+          data.roomId,
+          socket.authenticatedUserId
+        );
 
-      const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, data.roomId) });
-      if (!canvas) return;
+        const canvas = await db.query.canvases.findFirst({
+          where: eq(canvases.roomId, data.roomId),
+        });
+        if (!canvas) return;
 
-      const op = await db.query.canvasOperations.findFirst({
-        where: and(
-          eq(canvasOperations.canvasId, canvas.id),
-          eq(canvasOperations.opId, data.operationId)
-        ),
-      });
-      if (!op) return;
+        const op = await db.query.canvasOperations.findFirst({
+          where: and(
+            eq(canvasOperations.canvasId, canvas.id),
+            eq(canvasOperations.opId, data.operationId)
+          ),
+        });
+        if (!op) return;
 
-      if (!isDM && !hasModifyPermission && op.userId !== requesterUserId) return;
+        if (!isDM && !hasModifyPermission && op.userId !== requesterUserId) return;
 
-      const newPoints = (op.points as Point[]).map((p) => ({ x: p.x + data.dx, y: p.y + data.dy }));
-      await db.update(canvasOperations).set({ points: newPoints }).where(eq(canvasOperations.id, op.id));
+        const newPoints = (op.points as Point[]).map((p) => ({
+          x: p.x + data.dx,
+          y: p.y + data.dy,
+        }));
+        await db
+          .update(canvasOperations)
+          .set({ points: newPoints })
+          .where(eq(canvasOperations.id, op.id));
 
-      socket.to(data.roomId).emit('shape-moved', data);
-      logger.info(`[CANVAS] Moved shape ${data.operationId} in room ${data.roomId}`);
-    } catch (error) {
-      logger.error(`[CANVAS] Error moving shape in room ${data.roomId}:`, error);
+        socket.to(data.roomId).emit('shape-moved', data);
+        logger.info(`[CANVAS] Moved shape ${data.operationId} in room ${data.roomId}`);
+      } catch (error) {
+        logger.error(`[CANVAS] Error moving shape in room ${data.roomId}:`, error);
+      }
     }
-  });
+  );
 
   socket.on('canvas-scale', async (data: { roomId: string; scaleX: number; scaleY: number }) => {
     try {
@@ -240,7 +277,8 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
 
       const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, data.roomId) });
       if (canvas) {
-        const ops = await db.select()
+        const ops = await db
+          .select()
           .from(canvasOperations)
           .where(eq(canvasOperations.canvasId, canvas.id));
 
@@ -249,20 +287,28 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
             x: p.x * data.scaleX,
             y: p.y * data.scaleY,
           }));
-          await db.update(canvasOperations).set({ points: newPoints }).where(eq(canvasOperations.id, op.id));
+          await db
+            .update(canvasOperations)
+            .set({ points: newPoints })
+            .where(eq(canvasOperations.id, op.id));
         }
 
-        logger.info(`[CANVAS] Scaled ${ops.length} operations for room ${data.roomId} by (${data.scaleX}, ${data.scaleY})`);
+        logger.info(
+          `[CANVAS] Scaled ${ops.length} operations for room ${data.roomId} by (${data.scaleX}, ${data.scaleY})`
+        );
       }
 
       const roomTokens = await db.select().from(tokens).where(eq(tokens.roomId, data.roomId));
       for (const token of roomTokens) {
-        await db.update(tokens).set({
-          x: token.x * data.scaleX,
-          y: token.y * data.scaleY,
-          width: token.width * data.scaleX,
-          height: token.height * data.scaleY,
-        }).where(eq(tokens.id, token.id));
+        await db
+          .update(tokens)
+          .set({
+            x: token.x * data.scaleX,
+            y: token.y * data.scaleY,
+            width: token.width * data.scaleX,
+            height: token.height * data.scaleY,
+          })
+          .where(eq(tokens.id, token.id));
       }
 
       socket.to(data.roomId).emit('canvas-scale', data);
