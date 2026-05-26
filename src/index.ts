@@ -7,6 +7,7 @@ import { jsonApiMiddleware } from './middleware/json-api';
 import authProtectedRouter from './routes/authProtectedRouter';
 import authRouter from './routes/authRouter';
 import canvasRouter from './routes/canvasRouter';
+import filesRouter from './routes/filesRouter';
 import roomRouter from './routes/roomRouter';
 import userRouter from './routes/userRouter';
 import logger from './utils/logger';
@@ -47,6 +48,7 @@ app.use('/uploads', express.static(config.dataDir));
 app.use('/api/auth', authRouter);
 app.use('/api/rooms', roomRouter);
 app.use('/api/canvas', canvasRouter);
+app.use('/api/files', filesRouter);
 
 app.use(authenticate);
 app.use('/api/auth', authProtectedRouter);

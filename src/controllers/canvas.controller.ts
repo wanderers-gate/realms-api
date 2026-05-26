@@ -302,6 +302,62 @@ export const uploadMap = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+export const setMapUrl = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { roomId } = req.params;
+    const { mapUrl } = req.body as { mapUrl?: unknown };
+
+    if (!req.userId) {
+      res.status(401).json({
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+      });
+      return;
+    }
+
+    const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
+    if (!room) {
+      res.status(404).json({
+        errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }],
+      });
+      return;
+    }
+
+    if (room.createdById !== req.userId) {
+      res.status(403).json({
+        errors: [
+          { status: '403', title: 'Forbidden', detail: 'Only the room creator can set the map' },
+        ],
+      });
+      return;
+    }
+
+    if (
+      mapUrl !== null &&
+      (typeof mapUrl !== 'string' || !mapUrl.startsWith(`rooms/${room.slug}/`))
+    ) {
+      res.status(400).json({
+        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid map URL' }],
+      });
+      return;
+    }
+
+    const canvas = await getOrCreateCanvas(roomId);
+    if (canvas) {
+      await db
+        .update(canvases)
+        .set({ mapUrl: mapUrl as string | null })
+        .where(eq(canvases.id, canvas.id));
+    }
+
+    res.status(200).json({ data: { mapUrl: mapUrl ?? null } });
+  } catch (error) {
+    logger.error('Error setting map URL:', error);
+    res.status(500).json({
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to set map URL' }],
+    });
+  }
+};
+
 export const removeMap = async (req: Request, res: Response): Promise<void> => {
   try {
     const { roomId } = req.params;

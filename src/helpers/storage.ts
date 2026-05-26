@@ -17,6 +17,7 @@ export const createRoomDirs = (slug: string): void => {
   if (!fs.existsSync(assetsDir)) {
     fs.mkdirSync(path.join(assetsDir, 'maps'), { recursive: true });
     fs.mkdirSync(path.join(assetsDir, 'tokens'), { recursive: true });
+    fs.mkdirSync(path.join(assetsDir, 'audio'), { recursive: true });
   }
 };
 
