@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { Request, Response } from 'express';
+import multer from 'multer';
+import config from '../config/config';
 import { db } from '../db';
 import { canvasOperations, canvases, rooms } from '../db/schema';
 import {
@@ -35,24 +39,16 @@ export const getCanvas = async (req: Request, res: Response): Promise<void> => {
     });
 
     if (!room) {
-      res
-        .status(404)
-        .json({
-          errors: [
-            { status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' },
-          ],
-        });
+      res.status(404).json({
+        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
+      });
       return;
     }
 
     if (!req.userId && !room.allowGuests) {
-      res
-        .status(403)
-        .json({
-          errors: [
-            { status: '403', title: 'Forbidden', detail: 'This room does not allow guests' },
-          ],
-        });
+      res.status(403).json({
+        errors: [{ status: '403', title: 'Forbidden', detail: 'This room does not allow guests' }],
+      });
       return;
     }
 
@@ -73,13 +69,9 @@ export const getCanvas = async (req: Request, res: Response): Promise<void> => {
     res.json(serializeCanvas(canvas, ops));
   } catch (error) {
     logger.error('Error fetching canvas:', error);
-    res
-      .status(500)
-      .json({
-        errors: [
-          { status: '500', title: 'Internal Server Error', detail: 'Failed to fetch canvas' },
-        ],
-      });
+    res.status(500).json({
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to fetch canvas' }],
+    });
   }
 };
 
@@ -89,13 +81,11 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
     const userId = req.userId;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          errors: [
-            { status: '401', title: 'Unauthorized', detail: 'User must be authenticated to draw' },
-          ],
-        });
+      res.status(401).json({
+        errors: [
+          { status: '401', title: 'Unauthorized', detail: 'User must be authenticated to draw' },
+        ],
+      });
       return;
     }
 
@@ -104,24 +94,18 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
     });
 
     if (!room) {
-      res
-        .status(404)
-        .json({
-          errors: [
-            { status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' },
-          ],
-        });
+      res.status(404).json({
+        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
+      });
       return;
     }
 
     const operationData = deserializeCanvas((req.body.data || req.body) as JsonApiResourceObject);
 
     if (!operationData.operations?.length) {
-      res
-        .status(400)
-        .json({
-          errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid operation data' }],
-        });
+      res.status(400).json({
+        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid operation data' }],
+      });
       return;
     }
 
@@ -155,17 +139,15 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
     res.status(201).json(serializeCanvasOperations([newOperation]));
   } catch (error) {
     logger.error('Error adding canvas operation:', error);
-    res
-      .status(500)
-      .json({
-        errors: [
-          {
-            status: '500',
-            title: 'Internal Server Error',
-            detail: 'Failed to add drawing operation',
-          },
-        ],
-      });
+    res.status(500).json({
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'Failed to add drawing operation',
+        },
+      ],
+    });
   }
 };
 
@@ -175,17 +157,15 @@ export const deleteCanvasOperations = async (req: Request, res: Response): Promi
     const userId = req.userId;
 
     if (!userId) {
-      res
-        .status(401)
-        .json({
-          errors: [
-            {
-              status: '401',
-              title: 'Unauthorized',
-              detail: 'User must be authenticated to delete operations',
-            },
-          ],
-        });
+      res.status(401).json({
+        errors: [
+          {
+            status: '401',
+            title: 'Unauthorized',
+            detail: 'User must be authenticated to delete operations',
+          },
+        ],
+      });
       return;
     }
 
@@ -194,38 +174,30 @@ export const deleteCanvasOperations = async (req: Request, res: Response): Promi
     });
 
     if (!room) {
-      res
-        .status(404)
-        .json({
-          errors: [
-            { status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' },
-          ],
-        });
+      res.status(404).json({
+        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
+      });
       return;
     }
 
     const { operationIds } = req.body as { operationIds?: unknown };
 
     if (!Array.isArray(operationIds) || operationIds.length === 0) {
-      res
-        .status(400)
-        .json({
-          errors: [
-            { status: '400', title: 'Bad Request', detail: 'Operation IDs array is required' },
-          ],
-        });
+      res.status(400).json({
+        errors: [
+          { status: '400', title: 'Bad Request', detail: 'Operation IDs array is required' },
+        ],
+      });
       return;
     }
 
     const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
     if (!canvas) {
-      res
-        .status(404)
-        .json({
-          errors: [
-            { status: '404', title: 'Canvas Not Found', detail: 'Canvas not found for this room' },
-          ],
-        });
+      res.status(404).json({
+        errors: [
+          { status: '404', title: 'Canvas Not Found', detail: 'Canvas not found for this room' },
+        ],
+      });
       return;
     }
 
@@ -251,16 +223,129 @@ export const deleteCanvasOperations = async (req: Request, res: Response): Promi
       .json({ data: { deletedCount: deleted.length, remainingOperations: remaining.length } });
   } catch (error) {
     logger.error('Error deleting canvas operations:', error);
+    res.status(500).json({
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'Failed to delete canvas operations',
+        },
+      ],
+    });
+  }
+};
+
+export const mapUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['image/png', 'image/jpeg', 'image/webp'];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
+
+export const uploadMap = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { roomId } = req.params;
+
+    if (!req.userId) {
+      res.status(401).json({
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+      });
+      return;
+    }
+
+    const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
+    if (!room) {
+      res
+        .status(404)
+        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      return;
+    }
+
+    if (room.createdById !== req.userId) {
+      res.status(403).json({
+        errors: [
+          { status: '403', title: 'Forbidden', detail: 'Only the room creator can upload maps' },
+        ],
+      });
+      return;
+    }
+
+    const file = req.file;
+    if (!file) {
+      res
+        .status(400)
+        .json({ errors: [{ status: '400', title: 'Bad Request', detail: 'No file uploaded' }] });
+      return;
+    }
+
+    const ext = path.extname(file.originalname).toLowerCase();
+    const filename = `map-${Date.now()}${ext}`;
+    const dir = path.join(config.dataDir, 'rooms', room.slug, 'assets', 'maps');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, filename), file.buffer);
+
+    const mapUrl = `rooms/${room.slug}/assets/maps/${filename}`;
+
+    const canvas = await getOrCreateCanvas(roomId);
+    if (canvas) {
+      await db.update(canvases).set({ mapUrl }).where(eq(canvases.id, canvas.id));
+    }
+
+    res.status(200).json({ data: { mapUrl } });
+  } catch (error) {
+    logger.error('Error uploading map:', error);
+    res.status(500).json({
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to upload map' }],
+    });
+  }
+};
+
+export const removeMap = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { roomId } = req.params;
+
+    if (!req.userId) {
+      res
+        .status(401)
+        .json({
+          errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+        });
+      return;
+    }
+
+    const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
+    if (!room) {
+      res
+        .status(404)
+        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      return;
+    }
+
+    if (room.createdById !== req.userId) {
+      res
+        .status(403)
+        .json({
+          errors: [
+            { status: '403', title: 'Forbidden', detail: 'Only the room creator can remove maps' },
+          ],
+        });
+      return;
+    }
+
+    const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
+    if (canvas) {
+      await db.update(canvases).set({ mapUrl: null }).where(eq(canvases.id, canvas.id));
+    }
+
+    res.status(200).json({ data: { mapUrl: null } });
+  } catch (error) {
+    logger.error('Error removing map:', error);
     res
       .status(500)
       .json({
-        errors: [
-          {
-            status: '500',
-            title: 'Internal Server Error',
-            detail: 'Failed to delete canvas operations',
-          },
-        ],
+        errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to remove map' }],
       });
   }
 };

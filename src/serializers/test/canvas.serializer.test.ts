@@ -18,6 +18,7 @@ describe('Canvas Serializer', () => {
     lastModified: new Date('2023-01-01T12:00:00Z'),
     version: 5,
     createdById: 'user-uuid-789',
+    mapUrl: null,
     createdAt: new Date('2023-01-01T00:00:00Z'),
     updatedAt: new Date('2023-01-01T12:00:00Z'),
   };

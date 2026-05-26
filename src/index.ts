@@ -42,6 +42,7 @@ app.options('*', cors());
 app.use(express.json({ type: ['application/json', 'application/vnd.api+json'] }));
 app.use(cookieParser());
 app.use(jsonApiMiddleware);
+app.use('/uploads', express.static(config.dataDir));
 
 app.use('/api/auth', authRouter);
 app.use('/api/rooms', roomRouter);

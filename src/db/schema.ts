@@ -88,6 +88,7 @@ export const canvases = sqliteTable('canvases', {
   createdById: text('created_by_id')
     .notNull()
     .references(() => users.id),
+  mapUrl: text('map_url'),
   ...timestamps(),
 });
 

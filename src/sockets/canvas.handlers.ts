@@ -95,10 +95,12 @@ export async function savePendingOperations(roomId: string): Promise<void> {
   }
 }
 
-export async function loadExistingCanvas(roomId: string): Promise<CanvasOperation[]> {
+export async function loadExistingCanvas(
+  roomId: string
+): Promise<{ operations: CanvasOperation[]; mapUrl: string | null }> {
   try {
     const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
-    if (!canvas) return [];
+    if (!canvas) return { operations: [], mapUrl: null };
 
     const ops = await db
       .select()
@@ -110,19 +112,22 @@ export async function loadExistingCanvas(roomId: string): Promise<CanvasOperatio
       logger.info(`[CANVAS] Loaded ${ops.length} operations for room ${roomId}`);
     }
 
-    return ops.map((op) => ({
-      id: op.opId,
-      type: op.type as CanvasOperation['type'],
-      tool: op.tool as CanvasOperation['tool'],
-      points: op.points as Point[],
-      color: op.color,
-      size: op.size,
-      timestamp: op.timestamp,
-      userId: op.userId,
-    }));
+    return {
+      operations: ops.map((op) => ({
+        id: op.opId,
+        type: op.type as CanvasOperation['type'],
+        tool: op.tool as CanvasOperation['tool'],
+        points: op.points as Point[],
+        color: op.color,
+        size: op.size,
+        timestamp: op.timestamp,
+        userId: op.userId,
+      })),
+      mapUrl: canvas.mapUrl ?? null,
+    };
   } catch (error) {
     logger.error(`[CANVAS] Error loading canvas for room ${roomId}:`, error);
-    return [];
+    return { operations: [], mapUrl: null };
   }
 }
 
@@ -324,6 +329,16 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
       socket.to(data.roomId).emit('grid-settings-update', data);
     } catch (error) {
       logger.error(`[GRID] Error broadcasting grid settings for room ${data.roomId}:`, error);
+    }
+  });
+
+  socket.on('map-update', async (data: { roomId: string; mapUrl: string | null }) => {
+    try {
+      const { isDM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
+      if (!isDM) return;
+      _io.to(data.roomId).emit('map-update', data);
+    } catch (error) {
+      logger.error(`[CANVAS] Error broadcasting map update for room ${data.roomId}:`, error);
     }
   });
 }
