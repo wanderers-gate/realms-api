@@ -307,11 +307,9 @@ export const removeMap = async (req: Request, res: Response): Promise<void> => {
     const { roomId } = req.params;
 
     if (!req.userId) {
-      res
-        .status(401)
-        .json({
-          errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-        });
+      res.status(401).json({
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+      });
       return;
     }
 
@@ -324,13 +322,11 @@ export const removeMap = async (req: Request, res: Response): Promise<void> => {
     }
 
     if (room.createdById !== req.userId) {
-      res
-        .status(403)
-        .json({
-          errors: [
-            { status: '403', title: 'Forbidden', detail: 'Only the room creator can remove maps' },
-          ],
-        });
+      res.status(403).json({
+        errors: [
+          { status: '403', title: 'Forbidden', detail: 'Only the room creator can remove maps' },
+        ],
+      });
       return;
     }
 
@@ -342,10 +338,8 @@ export const removeMap = async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({ data: { mapUrl: null } });
   } catch (error) {
     logger.error('Error removing map:', error);
-    res
-      .status(500)
-      .json({
-        errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to remove map' }],
-      });
+    res.status(500).json({
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to remove map' }],
+    });
   }
 };

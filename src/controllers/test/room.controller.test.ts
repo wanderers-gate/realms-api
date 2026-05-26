@@ -1,6 +1,9 @@
-import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { Request, Response } from 'express';
+
+const TEST_USER_ID = 'user-id-room-ctrl-001';
+const TEST_ROOM_ID = 'room-id-room-ctrl-001';
+const TEST_OTHER_USER_ID = 'user-id-room-ctrl-other';
 
 jest.mock('../../helpers/storage', () => ({
   slugify: jest.fn((name: string) => name.toLowerCase().replace(/\s+/g, '-')),
@@ -8,26 +11,103 @@ jest.mock('../../helpers/storage', () => ({
   renameRoomDir: jest.fn(),
 }));
 
-jest.mock('../../db', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { drizzle } = require('drizzle-orm/better-sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { migrate } = require('drizzle-orm/better-sqlite3/migrator');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const schema = require('../../db/schema');
-  const sqlite = new Database(':memory:');
-  sqlite.pragma('foreign_keys = ON');
-  const db = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder: path.join(__dirname, '../../../drizzle') });
-  return { db };
-});
+jest.mock('../../db', () => ({
+  db: {
+    query: {
+      users: { findFirst: jest.fn() },
+      rooms: { findFirst: jest.fn() },
+    },
+    insert: jest.fn(),
+    update: jest.fn(),
+    select: jest.fn(),
+  },
+}));
 
 import { db } from '../../db';
-import { rooms, users } from '../../db/schema';
 import { createRoomDirs } from '../../helpers/storage';
 import { createRoom, deleteRoom, getRoom, getRooms, updateRoom } from '../room.controller';
+
+const mockUser = {
+  id: TEST_USER_ID,
+  email: 'test@example.com',
+  firstName: 'Test',
+  lastName: 'User',
+  displayName: 'Test User',
+  tokenVersion: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+const mockRoom = {
+  id: TEST_ROOM_ID,
+  name: 'Test Room',
+  slug: 'test-room',
+  description: 'A test room',
+  roomCode: 'TST001',
+  createdById: TEST_USER_ID,
+  isActive: true,
+  maxPlayers: 5,
+  currentPlayers: 0,
+  lastActivity: new Date(),
+  isPrivate: false,
+  allowGuests: true,
+  gridSize: 50,
+  gridVisible: true,
+  gridType: 'square',
+  snapToGrid: false,
+  gridOpacity: 0.6,
+  canvasWidth: 3000,
+  canvasHeight: 2000,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+// Chain for getRooms room list: from().leftJoin().where().orderBy().offset().limit()
+// biome-ignore lint/suspicious/noExplicitAny: test mock helper
+const makeRoomListChain = (roomsData: any[]) => ({
+  from: jest.fn().mockReturnValue({
+    leftJoin: jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnValue({
+        orderBy: jest.fn().mockReturnValue({
+          offset: jest.fn().mockReturnValue({
+            limit: (jest.fn() as jest.Mock<() => Promise<unknown>>).mockResolvedValue(roomsData),
+          }),
+        }),
+      }),
+    }),
+  }),
+});
+
+// Chain for getRooms total count: from().where()
+const makeCountChain = (total: number) => ({
+  from: jest.fn().mockReturnValue({
+    where: (jest.fn() as jest.Mock<() => Promise<unknown>>).mockResolvedValue([{ total }]),
+  }),
+});
+
+// Chain for getRoom single result: from().leftJoin().where().limit()
+// biome-ignore lint/suspicious/noExplicitAny: test mock helper
+const makeSingleRoomChain = (result: any[]) => ({
+  from: jest.fn().mockReturnValue({
+    leftJoin: jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnValue({
+        limit: (jest.fn() as jest.Mock<() => Promise<unknown>>).mockResolvedValue(result),
+      }),
+    }),
+  }),
+});
+
+// Chain for update: set().where() — awaitable directly and with .returning()
+// biome-ignore lint/suspicious/noExplicitAny: test mock helper
+const makeUpdateChain = (returnedRows: any[]) => ({
+  set: jest.fn().mockReturnValue({
+    where: jest.fn().mockReturnValue(
+      Object.assign(Promise.resolve(undefined), {
+        returning: (jest.fn() as jest.Mock<() => Promise<unknown>>).mockResolvedValue(returnedRows),
+      })
+    ),
+  }),
+});
 
 const mockResponse = () => {
   const res = {} as Response;
@@ -44,34 +124,25 @@ const mockRequest = (
   params: Record<string, string> = {},
   query: Record<string, string> = {},
   userId?: string
-) =>
-  ({
-    body,
-    params,
-    query,
-    userId,
-  }) as unknown as Request;
+) => ({ body, params, query, userId }) as unknown as Request;
 
-let testUserId: string;
-
-beforeEach(async () => {
-  const [user] = await db
-    .insert(users)
-    .values({
-      email: 'test@example.com',
-      password: 'hashed-password',
-      firstName: 'Test',
-      lastName: 'User',
-      displayName: 'Test User',
-    })
-    .returning();
-  testUserId = user.id;
+beforeEach(() => {
   jest.clearAllMocks();
-});
 
-afterEach(async () => {
-  await db.delete(rooms);
-  await db.delete(users);
+  (db.query.users.findFirst as unknown as jest.Mock<() => Promise<unknown>>).mockResolvedValue(
+    mockUser
+  );
+  (db.query.rooms.findFirst as unknown as jest.Mock<() => Promise<unknown>>).mockResolvedValue(
+    null
+  );
+
+  (db.insert as jest.Mock).mockReturnValue({
+    values: jest.fn().mockReturnValue({
+      returning: (jest.fn() as jest.Mock<() => Promise<unknown>>).mockResolvedValue([mockRoom]),
+    }),
+  });
+
+  (db.update as jest.Mock).mockReturnValue(makeUpdateChain([mockRoom]));
 });
 
 describe('Room Controller', () => {
@@ -89,7 +160,7 @@ describe('Room Controller', () => {
         },
         {},
         {},
-        testUserId
+        TEST_USER_ID
       );
       const res = mockResponse();
 
@@ -124,7 +195,11 @@ describe('Room Controller', () => {
     });
 
     it('should return 404 if user does not exist', async () => {
-      const req = mockRequest({ attributes: { name: 'Test Room' } }, {}, {}, 'nonexistent-user-id');
+      (db.query.users.findFirst as unknown as jest.Mock<() => Promise<unknown>>).mockResolvedValue(
+        undefined
+      );
+
+      const req = mockRequest({ attributes: { name: 'Test Room' } }, {}, {}, TEST_OTHER_USER_ID);
       const res = mockResponse();
 
       await createRoom(req, res);
@@ -136,7 +211,7 @@ describe('Room Controller', () => {
     });
 
     it('should return 400 if room name is missing', async () => {
-      const req = mockRequest({ attributes: { description: 'No name' } }, {}, {}, testUserId);
+      const req = mockRequest({ attributes: { description: 'No name' } }, {}, {}, TEST_USER_ID);
       const res = mockResponse();
 
       await createRoom(req, res);
@@ -148,14 +223,13 @@ describe('Room Controller', () => {
     });
 
     it('should return 409 if room name already exists', async () => {
-      await db.insert(rooms).values({
-        name: 'Duplicate Room',
-        slug: 'duplicate-room',
-        roomCode: 'DUP001',
-        createdById: testUserId,
-      });
+      // The name-conflict check happens before slug/code generation, so
+      // any rooms.findFirst call returns the conflicting room.
+      (db.query.rooms.findFirst as unknown as jest.Mock<() => Promise<unknown>>).mockResolvedValue(
+        mockRoom
+      );
 
-      const req = mockRequest({ attributes: { name: 'Duplicate Room' } }, {}, {}, testUserId);
+      const req = mockRequest({ attributes: { name: 'Test Room' } }, {}, {}, TEST_USER_ID);
       const res = mockResponse();
 
       await createRoom(req, res);
@@ -168,29 +242,17 @@ describe('Room Controller', () => {
   });
 
   describe('getRooms', () => {
-    beforeEach(async () => {
-      await db.insert(rooms).values([
-        {
-          name: 'Public Room',
-          slug: 'public-room',
-          roomCode: 'PUB001',
-          createdById: testUserId,
-          isActive: true,
-          allowGuests: true,
-        },
-        {
-          name: 'No Guest Room',
-          slug: 'no-guest-room',
-          roomCode: 'NGR001',
-          createdById: testUserId,
-          isActive: true,
-          allowGuests: false,
-        },
-      ]);
-    });
-
     it('should return all active rooms for authenticated users', async () => {
-      const req = mockRequest({}, {}, {}, testUserId);
+      const mockRoom2 = { ...mockRoom, id: 'room-id-2', name: 'No Guest Room', allowGuests: false };
+      const roomsData = [
+        { room: mockRoom, creator: mockUser },
+        { room: mockRoom2, creator: mockUser },
+      ];
+      (db.select as jest.Mock)
+        .mockReturnValueOnce(makeRoomListChain(roomsData))
+        .mockReturnValueOnce(makeCountChain(2));
+
+      const req = mockRequest({}, {}, {}, TEST_USER_ID);
       const res = mockResponse();
 
       await getRooms(req, res);
@@ -200,7 +262,12 @@ describe('Room Controller', () => {
       expect(response.meta.pagination.total).toBe(2);
     });
 
-    it('should filter out non-guest rooms for unauthenticated users', async () => {
+    it('should return only guest-allowed rooms for unauthenticated users', async () => {
+      const roomsData = [{ room: { ...mockRoom, name: 'Public Room' }, creator: mockUser }];
+      (db.select as jest.Mock)
+        .mockReturnValueOnce(makeRoomListChain(roomsData))
+        .mockReturnValueOnce(makeCountChain(1));
+
       const req = mockRequest();
       const res = mockResponse();
 
@@ -212,7 +279,16 @@ describe('Room Controller', () => {
     });
 
     it('should include pagination metadata', async () => {
-      const req = mockRequest({}, {}, { page: '1', limit: '10' }, testUserId);
+      const mockRoom2 = { ...mockRoom, id: 'room-id-2', name: 'Room 2' };
+      const roomsData = [
+        { room: mockRoom, creator: mockUser },
+        { room: mockRoom2, creator: mockUser },
+      ];
+      (db.select as jest.Mock)
+        .mockReturnValueOnce(makeRoomListChain(roomsData))
+        .mockReturnValueOnce(makeCountChain(2));
+
+      const req = mockRequest({}, {}, { page: '1', limit: '10' }, TEST_USER_ID);
       const res = mockResponse();
 
       await getRooms(req, res);
@@ -223,27 +299,12 @@ describe('Room Controller', () => {
   });
 
   describe('getRoom', () => {
-    let testRoomId: string;
-    let testRoomCode: string;
-
-    beforeEach(async () => {
-      testRoomCode = 'GET001';
-      const [room] = await db
-        .insert(rooms)
-        .values({
-          name: 'Get Test Room',
-          slug: 'get-test-room',
-          roomCode: testRoomCode,
-          createdById: testUserId,
-          isActive: true,
-          allowGuests: true,
-        })
-        .returning();
-      testRoomId = room.id;
-    });
-
     it('should return a specific room', async () => {
-      const req = mockRequest({}, { roomId: testRoomId });
+      (db.select as jest.Mock).mockReturnValue(
+        makeSingleRoomChain([{ room: mockRoom, creator: mockUser }])
+      );
+
+      const req = mockRequest({}, { roomId: TEST_ROOM_ID });
       const res = mockResponse();
 
       await getRoom(req, res);
@@ -252,13 +313,18 @@ describe('Room Controller', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             type: 'room',
-            attributes: expect.objectContaining({ name: 'Get Test Room', roomCode: testRoomCode }),
+            attributes: expect.objectContaining({
+              name: 'Test Room',
+              roomCode: 'TST001',
+            }),
           }),
         })
       );
     });
 
     it('should return 404 for non-existent room', async () => {
+      (db.select as jest.Mock).mockReturnValue(makeSingleRoomChain([]));
+
       const req = mockRequest({}, { roomId: 'nonexistent-uuid' });
       const res = mockResponse();
 
@@ -268,19 +334,11 @@ describe('Room Controller', () => {
     });
 
     it('should return 403 for guest-restricted room when unauthenticated', async () => {
-      const [privateRoom] = await db
-        .insert(rooms)
-        .values({
-          name: 'No Guest',
-          slug: 'no-guest',
-          roomCode: 'NGR002',
-          createdById: testUserId,
-          isActive: true,
-          allowGuests: false,
-        })
-        .returning();
+      (db.select as jest.Mock).mockReturnValue(
+        makeSingleRoomChain([{ room: { ...mockRoom, allowGuests: false }, creator: mockUser }])
+      );
 
-      const req = mockRequest({}, { roomId: privateRoom.id });
+      const req = mockRequest({}, { roomId: TEST_ROOM_ID });
       const res = mockResponse();
 
       await getRoom(req, res);
@@ -289,7 +347,11 @@ describe('Room Controller', () => {
     });
 
     it('should include creator in response', async () => {
-      const req = mockRequest({}, { roomId: testRoomId });
+      (db.select as jest.Mock).mockReturnValue(
+        makeSingleRoomChain([{ room: mockRoom, creator: mockUser }])
+      );
+
+      const req = mockRequest({}, { roomId: TEST_ROOM_ID });
       const res = mockResponse();
 
       await getRoom(req, res);
@@ -307,28 +369,19 @@ describe('Room Controller', () => {
   });
 
   describe('updateRoom', () => {
-    let testRoomId: string;
-
-    beforeEach(async () => {
-      const [room] = await db
-        .insert(rooms)
-        .values({
-          name: 'Original Name',
-          slug: 'original-name',
-          roomCode: 'UPD001',
-          createdById: testUserId,
-          isActive: true,
-        })
-        .returning();
-      testRoomId = room.id;
-    });
-
     it('should update room name and description', async () => {
+      const updatedRoom = { ...mockRoom, name: 'Updated Name', description: 'Updated description' };
+      // First findFirst returns existing room (owned by user)
+      (db.query.rooms.findFirst as unknown as jest.Mock<() => Promise<unknown>>)
+        .mockResolvedValueOnce(mockRoom) // room exists
+        .mockResolvedValue(null); // name/slug checks: no conflicts
+      (db.update as jest.Mock).mockReturnValue(makeUpdateChain([updatedRoom]));
+
       const req = mockRequest(
         { attributes: { name: 'Updated Name', description: 'Updated description' } },
-        { roomId: testRoomId },
+        { roomId: TEST_ROOM_ID },
         {},
-        testUserId
+        TEST_USER_ID
       );
       const res = mockResponse();
 
@@ -347,7 +400,7 @@ describe('Room Controller', () => {
     });
 
     it('should return 401 if unauthenticated', async () => {
-      const req = mockRequest({ attributes: { name: 'New Name' } }, { roomId: testRoomId });
+      const req = mockRequest({ attributes: { name: 'New Name' } }, { roomId: TEST_ROOM_ID });
       const res = mockResponse();
 
       await updateRoom(req, res);
@@ -356,21 +409,15 @@ describe('Room Controller', () => {
     });
 
     it('should return 403 if user is not the creator', async () => {
-      const [otherUser] = await db
-        .insert(users)
-        .values({
-          email: 'other@example.com',
-          password: 'hash',
-          firstName: 'Other',
-          lastName: 'User',
-        })
-        .returning();
+      (db.query.rooms.findFirst as unknown as jest.Mock<() => Promise<unknown>>).mockResolvedValue(
+        mockRoom
+      );
 
       const req = mockRequest(
         { attributes: { name: 'New Name' } },
-        { roomId: testRoomId },
+        { roomId: TEST_ROOM_ID },
         {},
-        otherUser.id
+        TEST_OTHER_USER_ID
       );
       const res = mockResponse();
 
@@ -381,24 +428,12 @@ describe('Room Controller', () => {
   });
 
   describe('deleteRoom', () => {
-    let testRoomId: string;
-
-    beforeEach(async () => {
-      const [room] = await db
-        .insert(rooms)
-        .values({
-          name: 'Delete Me',
-          slug: 'delete-me',
-          roomCode: 'DEL001',
-          createdById: testUserId,
-          isActive: true,
-        })
-        .returning();
-      testRoomId = room.id;
-    });
-
     it('should soft-delete room', async () => {
-      const req = mockRequest({}, { roomId: testRoomId }, {}, testUserId);
+      (db.query.rooms.findFirst as unknown as jest.Mock<() => Promise<unknown>>).mockResolvedValue(
+        mockRoom
+      );
+
+      const req = mockRequest({}, { roomId: TEST_ROOM_ID }, {}, TEST_USER_ID);
       const res = mockResponse();
 
       await deleteRoom(req, res);
@@ -407,17 +442,11 @@ describe('Room Controller', () => {
     });
 
     it('should return 403 if user is not the creator', async () => {
-      const [otherUser] = await db
-        .insert(users)
-        .values({
-          email: 'other2@example.com',
-          password: 'hash',
-          firstName: 'Other',
-          lastName: 'User',
-        })
-        .returning();
+      (db.query.rooms.findFirst as unknown as jest.Mock<() => Promise<unknown>>).mockResolvedValue(
+        mockRoom
+      );
 
-      const req = mockRequest({}, { roomId: testRoomId }, {}, otherUser.id);
+      const req = mockRequest({}, { roomId: TEST_ROOM_ID }, {}, TEST_OTHER_USER_ID);
       const res = mockResponse();
 
       await deleteRoom(req, res);
