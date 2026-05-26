@@ -1,31 +1,33 @@
-import { Types } from 'mongoose';
-import type { UserDocument } from '../../models/user-model';
+import type { User } from '../../types/express';
 import type { JsonApiResourceObject } from '../../types/json-api';
 import { deserializeUser, serializeUser } from '../user.serializer';
 
 describe('User Serializer', () => {
-  const mockUser: Partial<UserDocument> = {
-    _id: new Types.ObjectId(),
+  const mockUser: User = {
+    id: 'user-uuid-123',
     email: 'test@example.com',
     firstName: 'John',
     lastName: 'Doe',
     password: 'hashed_password',
+    displayName: null,
+    tokenVersion: 0,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   };
 
   describe('serializeUser', () => {
     it('should serialize a single user', () => {
-      const result = serializeUser(mockUser as UserDocument);
+      const result = serializeUser(mockUser);
 
       expect(result).toEqual({
         data: {
-          id: mockUser._id?.toString(),
+          id: mockUser.id,
           type: 'user',
           attributes: {
             email: mockUser.email,
             firstName: mockUser.firstName,
             lastName: mockUser.lastName,
+            displayName: mockUser.displayName,
             createdAt: mockUser.createdAt,
             updatedAt: mockUser.updatedAt,
           },
@@ -34,37 +36,35 @@ describe('User Serializer', () => {
     });
 
     it('should serialize an array of users', () => {
-      const mockUsers = [
+      const mockUsers: User[] = [
         mockUser,
-        {
-          ...mockUser,
-          _id: new Types.ObjectId(),
-          email: 'test2@example.com',
-        },
-      ] as UserDocument[];
+        { ...mockUser, id: 'user-uuid-456', email: 'test2@example.com' },
+      ];
 
       const result = serializeUser(mockUsers);
 
       expect(result).toEqual({
         data: [
           {
-            id: mockUsers[0]._id?.toString(),
+            id: mockUsers[0].id,
             type: 'user',
             attributes: {
               email: mockUsers[0].email,
               firstName: mockUsers[0].firstName,
               lastName: mockUsers[0].lastName,
+              displayName: mockUsers[0].displayName,
               createdAt: mockUsers[0].createdAt,
               updatedAt: mockUsers[0].updatedAt,
             },
           },
           {
-            id: mockUsers[1]._id?.toString(),
+            id: mockUsers[1].id,
             type: 'user',
             attributes: {
               email: mockUsers[1].email,
               firstName: mockUsers[1].firstName,
               lastName: mockUsers[1].lastName,
+              displayName: mockUsers[1].displayName,
               createdAt: mockUsers[1].createdAt,
               updatedAt: mockUsers[1].updatedAt,
             },
@@ -74,101 +74,54 @@ describe('User Serializer', () => {
     });
 
     it('should exclude password from serialized output', () => {
-      const result = serializeUser(mockUser as UserDocument);
+      const result = serializeUser(mockUser);
       const data = result.data as JsonApiResourceObject;
-
       expect(data.attributes).not.toHaveProperty('password');
-    });
-
-    it('should handle missing optional fields', () => {
-      const partialUser = {
-        _id: new Types.ObjectId(),
-        email: 'test@example.com',
-        firstName: 'John',
-        lastName: 'Doe',
-      } as UserDocument;
-
-      const result = serializeUser(partialUser);
-      const data = result.data as JsonApiResourceObject;
-
-      expect(data.attributes).not.toHaveProperty('createdAt');
-      expect(data.attributes).not.toHaveProperty('updatedAt');
     });
   });
 
   describe('deserializeUser', () => {
     it('should deserialize a user resource', () => {
       const resource: JsonApiResourceObject = {
-        id: mockUser._id?.toString() ?? '',
+        id: mockUser.id,
         type: 'user',
         attributes: {
-          email: mockUser.email ?? '',
-          firstName: mockUser.firstName ?? '',
-          lastName: mockUser.lastName ?? '',
-          createdAt: mockUser.createdAt ?? new Date(),
-          updatedAt: mockUser.updatedAt ?? new Date(),
+          email: mockUser.email,
+          firstName: mockUser.firstName,
+          lastName: mockUser.lastName,
         },
       };
 
       const result = deserializeUser(resource);
 
       expect(result).toEqual({
-        _id: mockUser._id,
         email: mockUser.email,
         firstName: mockUser.firstName,
         lastName: mockUser.lastName,
-        createdAt: mockUser.createdAt,
-        updatedAt: mockUser.updatedAt,
       });
     });
 
     it('should handle missing attributes', () => {
       const resource: JsonApiResourceObject = {
-        id: mockUser._id?.toString() ?? '',
+        id: mockUser.id,
         type: 'user',
         attributes: {},
       };
 
       const result = deserializeUser(resource);
-
-      expect(result).toEqual({
-        _id: mockUser._id,
-      });
+      expect(result).toEqual({});
     });
 
     it('should ignore unknown attributes', () => {
       const resource: JsonApiResourceObject = {
-        id: mockUser._id?.toString() ?? '',
+        id: mockUser.id,
         type: 'user',
-        attributes: {
-          email: mockUser.email ?? '',
-          unknownField: 'value',
-        },
+        attributes: { email: mockUser.email, unknownField: 'value' },
       };
 
       const result = deserializeUser(resource);
-
-      expect(result).toEqual({
-        _id: mockUser._id,
-        email: mockUser.email,
-      });
+      expect(result).toEqual({ email: mockUser.email });
       expect(result).not.toHaveProperty('unknownField');
-    });
-
-    it('should handle missing id', () => {
-      const resource = {
-        type: 'user',
-        attributes: {
-          email: mockUser.email ?? '',
-        },
-      } as unknown as JsonApiResourceObject;
-
-      const result = deserializeUser(resource);
-
-      expect(result).toEqual({
-        email: mockUser.email,
-      });
-      expect(result).not.toHaveProperty('_id');
     });
   });
 });

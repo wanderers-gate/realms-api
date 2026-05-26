@@ -1,11 +1,10 @@
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { Server, Socket } from 'socket.io';
-import { CanvasModel } from '../models/canvas-model';
-import { RoomModel } from '../models/room-model';
-import { TokenModel } from '../models/token-model';
-import type { CanvasOperation, DrawingEvent } from '../types/canvas';
+import { db } from '../db';
+import { canvasOperations, canvases, rooms, tokens, userPermissions } from '../db/schema';
+import type { CanvasOperation, DrawingEvent, Point } from '../types/canvas';
 import logger from '../utils/logger';
 
-// Module-level maps so pending ops survive across socket events and can be flushed on disconnect
 export const pendingCanvasOperations = new Map<string, CanvasOperation[]>();
 const canvasSaveTimer = new Map<string, NodeJS.Timeout>();
 
@@ -20,37 +19,72 @@ const createCanvasOperation = (drawingEvent: DrawingEvent & { id?: string }): Ca
   userId: drawingEvent.userId,
 });
 
+async function getOrCreateCanvas(roomId: string) {
+  const existing = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
+  if (existing) return existing;
+
+  const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
+  if (!room) return null;
+
+  const [canvas] = await db
+    .insert(canvases)
+    .values({ roomId, createdById: room.createdById })
+    .returning();
+  return canvas;
+}
+
+async function getRoomPermissions(roomId: string, authenticatedUserId: string | undefined) {
+  const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
+  if (!room) return { isDM: false, hasModifyPermission: false };
+
+  const isDM = !!authenticatedUserId && room.createdById === authenticatedUserId;
+
+  const permission = authenticatedUserId
+    ? await db.query.userPermissions.findFirst({
+        where: and(
+          eq(userPermissions.roomId, roomId),
+          eq(userPermissions.userId, authenticatedUserId)
+        ),
+      })
+    : undefined;
+
+  return { isDM, hasModifyPermission: permission?.canModifyDrawings ?? false };
+}
+
 export async function savePendingOperations(roomId: string): Promise<void> {
   const operations = pendingCanvasOperations.get(roomId);
   if (!operations || operations.length === 0) return;
 
   try {
-    const room = await RoomModel.findOne({ roomId });
-    if (!room) {
+    const canvas = await getOrCreateCanvas(roomId);
+    if (!canvas) {
       logger.error(`[CANVAS] Room not found for batch save: ${roomId}`);
       return;
     }
 
-    const result = await CanvasModel.findOneAndUpdate(
-      { roomId },
-      { $push: { operations: { $each: operations } } },
-      { new: true }
+    await db.insert(canvasOperations).values(
+      operations.map((op) => ({
+        canvasId: canvas.id,
+        opId: op.id,
+        type: op.type,
+        tool: op.tool,
+        points: op.points,
+        color: op.color,
+        size: op.size,
+        userId: op.userId,
+        timestamp: op.timestamp,
+      }))
     );
 
-    if (result) {
-      logger.info(`[CANVAS] Batch saved ${operations.length} operations for room ${roomId}`);
-    } else {
-      const newCanvas = new CanvasModel({ roomId, operations, createdBy: room.createdBy });
-      await newCanvas.save();
-      logger.info(
-        `[CANVAS] Created new canvas with ${operations.length} operations for room ${roomId}`
-      );
-    }
+    await db
+      .update(canvases)
+      .set({ lastModified: new Date(), version: canvas.version + 1 })
+      .where(eq(canvases.id, canvas.id));
 
+    logger.info(`[CANVAS] Batch saved ${operations.length} operations for room ${roomId}`);
     pendingCanvasOperations.delete(roomId);
   } catch (error) {
     logger.error(`[CANVAS] Error in batch save for room ${roomId}:`, error);
-    // Keep ops for retry but cap size to prevent unbounded memory growth
     const currentOps = pendingCanvasOperations.get(roomId) || [];
     if (currentOps.length > 1000) {
       pendingCanvasOperations.set(roomId, currentOps.slice(-100));
@@ -63,12 +97,29 @@ export async function savePendingOperations(roomId: string): Promise<void> {
 
 export async function loadExistingCanvas(roomId: string): Promise<CanvasOperation[]> {
   try {
-    const canvas = await CanvasModel.findOne({ roomId });
-    if (canvas && canvas.operations.length > 0) {
-      logger.info(`[CANVAS] Loaded ${canvas.operations.length} operations for room ${roomId}`);
-      return canvas.operations;
+    const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
+    if (!canvas) return [];
+
+    const ops = await db
+      .select()
+      .from(canvasOperations)
+      .where(eq(canvasOperations.canvasId, canvas.id))
+      .orderBy(asc(canvasOperations.timestamp));
+
+    if (ops.length > 0) {
+      logger.info(`[CANVAS] Loaded ${ops.length} operations for room ${roomId}`);
     }
-    return [];
+
+    return ops.map((op) => ({
+      id: op.opId,
+      type: op.type as CanvasOperation['type'],
+      tool: op.tool as CanvasOperation['tool'],
+      points: op.points as Point[],
+      color: op.color,
+      size: op.size,
+      timestamp: op.timestamp,
+      userId: op.userId,
+    }));
   } catch (error) {
     logger.error(`[CANVAS] Error loading canvas for room ${roomId}:`, error);
     return [];
@@ -87,7 +138,6 @@ function scheduleSave(roomId: string): void {
 
 export function registerCanvasHandlers(socket: Socket, _io: Server): void {
   socket.on('canvas-draw', (drawingEvent: DrawingEvent & { id?: string }) => {
-    // Always use server-verified userId, not client-provided
     const effectiveUserId = socket.authenticatedUserId || socket.id;
     const operation = createCanvasOperation({ ...drawingEvent, userId: effectiveUserId });
 
@@ -97,7 +147,6 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
       timestamp: operation.timestamp,
     });
 
-    // Only persist completion events (have an id), not real-time pen segments
     if (drawingEvent.id) {
       const existingOps = pendingCanvasOperations.get(drawingEvent.roomId) || [];
       existingOps.push(operation);
@@ -109,12 +158,17 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
   socket.on('canvas-undo', async (roomId: string) => {
     logger.info(`[CANVAS] Received undo event from ${socket.id} in room ${roomId}`);
     try {
-      const canvas = await CanvasModel.findOne({ roomId });
-      if (canvas && canvas.operations.length > 0) {
-        canvas.operations.pop();
-        await canvas.save();
-        logger.info(`[CANVAS] Undid last operation for room ${roomId}`);
-      }
+      const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
+      if (!canvas) return;
+
+      const lastOp = await db.query.canvasOperations.findFirst({
+        where: eq(canvasOperations.canvasId, canvas.id),
+        orderBy: [desc(canvasOperations.timestamp)],
+      });
+      if (!lastOp) return;
+
+      await db.delete(canvasOperations).where(eq(canvasOperations.id, lastOp.id));
+      logger.info(`[CANVAS] Undid last operation for room ${roomId}`);
       socket.to(roomId).emit('canvas-undo', roomId);
     } catch (error) {
       logger.error(`[CANVAS] Error undoing operation for room ${roomId}:`, error);
@@ -129,36 +183,41 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
       await savePendingOperations(data.roomId);
 
       const requesterUserId = socket.authenticatedUserId || socket.id;
-      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
-      const isDM =
-        socket.authenticatedUserId && roomDoc?.createdBy.toString() === socket.authenticatedUserId;
-      const hasModifyPermission = roomDoc?.userPermissions.some(
-        (p) => p.userId === requesterUserId && p.canModifyDrawings
+      const { isDM, hasModifyPermission } = await getRoomPermissions(
+        data.roomId,
+        socket.authenticatedUserId
       );
 
-      const canvas = await CanvasModel.findOne({ roomId: data.roomId });
+      const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, data.roomId) });
       if (!canvas) return;
 
-      const allowedIds = new Set(
-        canvas.operations
-          .filter((op) => data.operationIds.includes(op.id))
-          .filter((op) => isDM || hasModifyPermission || op.userId === requesterUserId)
-          .map((op) => op.id)
+      const opsToDelete = await db
+        .select()
+        .from(canvasOperations)
+        .where(
+          and(
+            eq(canvasOperations.canvasId, canvas.id),
+            inArray(canvasOperations.opId, data.operationIds)
+          )
+        );
+
+      const allowed = opsToDelete.filter(
+        (op) => isDM || hasModifyPermission || op.userId === requesterUserId
       );
+      if (allowed.length === 0) return;
 
-      if (allowedIds.size === 0) return;
-
-      const initialCount = canvas.operations.length;
-      canvas.operations = canvas.operations.filter((op) => !allowedIds.has(op.id));
-      const deletedCount = initialCount - canvas.operations.length;
-
-      await canvas.save();
-      logger.info(`[CANVAS] Deleted ${deletedCount} operations for room ${data.roomId}`);
+      await db.delete(canvasOperations).where(
+        inArray(
+          canvasOperations.id,
+          allowed.map((op) => op.id)
+        )
+      );
+      logger.info(`[CANVAS] Deleted ${allowed.length} operations for room ${data.roomId}`);
 
       socket.to(data.roomId).emit('canvas-delete', {
         roomId: data.roomId,
-        operationIds: Array.from(allowedIds),
-        deletedCount,
+        operationIds: allowed.map((op) => op.opId),
+        deletedCount: allowed.length,
       });
     } catch (error) {
       logger.error(`[CANVAS] Error deleting canvas operations for room ${data.roomId}:`, error);
@@ -170,23 +229,37 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
     async (data: { roomId: string; operationId: string; dx: number; dy: number }) => {
       try {
         await savePendingOperations(data.roomId);
+
         const requesterUserId = socket.authenticatedUserId || socket.id;
-        const [canvas, roomDoc] = await Promise.all([
-          CanvasModel.findOne({ roomId: data.roomId }),
-          RoomModel.findOne({ roomId: data.roomId }),
-        ]);
-        if (!canvas) return;
-        const op = canvas.operations.find((o) => o.id === data.operationId);
-        if (!op) return;
-        const isDM =
-          socket.authenticatedUserId &&
-          roomDoc?.createdBy.toString() === socket.authenticatedUserId;
-        const hasModifyPermission = roomDoc?.userPermissions.some(
-          (p) => p.userId === requesterUserId && p.canModifyDrawings
+        const { isDM, hasModifyPermission } = await getRoomPermissions(
+          data.roomId,
+          socket.authenticatedUserId
         );
+
+        const canvas = await db.query.canvases.findFirst({
+          where: eq(canvases.roomId, data.roomId),
+        });
+        if (!canvas) return;
+
+        const op = await db.query.canvasOperations.findFirst({
+          where: and(
+            eq(canvasOperations.canvasId, canvas.id),
+            eq(canvasOperations.opId, data.operationId)
+          ),
+        });
+        if (!op) return;
+
         if (!isDM && !hasModifyPermission && op.userId !== requesterUserId) return;
-        op.points = op.points.map((p) => ({ x: p.x + data.dx, y: p.y + data.dy }));
-        await canvas.save();
+
+        const newPoints = (op.points as Point[]).map((p) => ({
+          x: p.x + data.dx,
+          y: p.y + data.dy,
+        }));
+        await db
+          .update(canvasOperations)
+          .set({ points: newPoints })
+          .where(eq(canvasOperations.id, op.id));
+
         socket.to(data.roomId).emit('shape-moved', data);
         logger.info(`[CANVAS] Moved shape ${data.operationId} in room ${data.roomId}`);
       } catch (error) {
@@ -197,50 +270,56 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
 
   socket.on('canvas-scale', async (data: { roomId: string; scaleX: number; scaleY: number }) => {
     try {
-      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
-      if (!roomDoc) return;
-      const isDM =
-        socket.authenticatedUserId && roomDoc.createdBy.toString() === socket.authenticatedUserId;
+      const { isDM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
       if (!isDM) return;
 
-      // Flush pending ops before scaling so nothing is missed
       await savePendingOperations(data.roomId);
 
-      const canvas = await CanvasModel.findOne({ roomId: data.roomId });
-      if (canvas && canvas.operations.length > 0) {
-        for (const op of canvas.operations) {
-          op.points = op.points.map((p) => ({ x: p.x * data.scaleX, y: p.y * data.scaleY }));
+      const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, data.roomId) });
+      if (canvas) {
+        const ops = await db
+          .select()
+          .from(canvasOperations)
+          .where(eq(canvasOperations.canvasId, canvas.id));
+
+        for (const op of ops) {
+          const newPoints = (op.points as Point[]).map((p) => ({
+            x: p.x * data.scaleX,
+            y: p.y * data.scaleY,
+          }));
+          await db
+            .update(canvasOperations)
+            .set({ points: newPoints })
+            .where(eq(canvasOperations.id, op.id));
         }
-        canvas.markModified('operations');
-        await canvas.save();
+
         logger.info(
-          `[CANVAS] Scaled ${canvas.operations.length} operations for room ${data.roomId} by (${data.scaleX}, ${data.scaleY})`
+          `[CANVAS] Scaled ${ops.length} operations for room ${data.roomId} by (${data.scaleX}, ${data.scaleY})`
         );
       }
 
-      await TokenModel.updateMany({ roomId: data.roomId }, [
-        {
-          $set: {
-            x: { $multiply: ['$x', data.scaleX] },
-            y: { $multiply: ['$y', data.scaleY] },
-            width: { $multiply: ['$width', data.scaleX] },
-            height: { $multiply: ['$height', data.scaleY] },
-          },
-        },
-      ]);
+      const roomTokens = await db.select().from(tokens).where(eq(tokens.roomId, data.roomId));
+      for (const token of roomTokens) {
+        await db
+          .update(tokens)
+          .set({
+            x: token.x * data.scaleX,
+            y: token.y * data.scaleY,
+            width: token.width * data.scaleX,
+            height: token.height * data.scaleY,
+          })
+          .where(eq(tokens.id, token.id));
+      }
 
       socket.to(data.roomId).emit('canvas-scale', data);
     } catch (error) {
-      logger.error(`[CANVAS] Error scaling canvas operations for room ${data.roomId}:`, error);
+      logger.error(`[CANVAS] Error scaling canvas for room ${data.roomId}:`, error);
     }
   });
 
   socket.on('grid-settings-update', async (data: { roomId: string; gridSettings: unknown }) => {
     try {
-      const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
-      if (!roomDoc) return;
-      const isDM =
-        socket.authenticatedUserId && roomDoc.createdBy.toString() === socket.authenticatedUserId;
+      const { isDM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
       if (!isDM) return;
       socket.to(data.roomId).emit('grid-settings-update', data);
     } catch (error) {

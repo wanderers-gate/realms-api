@@ -1,156 +1,130 @@
 import { describe, expect, it } from '@jest/globals';
-import { Types } from 'mongoose';
-import type { RoomDocument } from '../../models/room-model';
 import type { JsonApiResourceObject, JsonApiResponse } from '../../types/json-api';
+import type { Room } from '../room.serializer';
 import { deserializeRoom, serializeRoom, serializeRoomWithIncludes } from '../room.serializer';
 
-// Helper function to safely access array data
 const getArrayData = (response: JsonApiResponse): JsonApiResourceObject[] => {
-  if (Array.isArray(response.data)) {
-    return response.data;
-  }
+  if (Array.isArray(response.data)) return response.data;
   throw new Error('Expected array data');
 };
 
-// Helper function to safely access single data
 const getSingleData = (response: JsonApiResponse): JsonApiResourceObject => {
-  if (!Array.isArray(response.data)) {
-    return response.data;
-  }
+  if (!Array.isArray(response.data)) return response.data;
   throw new Error('Expected single data');
 };
 
 describe('Room Serializer', () => {
-  const mockRoom: Partial<RoomDocument> = {
-    _id: new Types.ObjectId(),
+  const mockRoom: Room = {
+    id: 'room-uuid-123',
     name: 'Test Room',
+    slug: 'test-room',
     description: 'A test room for testing',
-    roomId: 'ABC123',
-    createdBy: new Types.ObjectId(),
+    roomCode: 'ABC123',
+    createdById: 'user-uuid-456',
     isActive: true,
     maxPlayers: 5,
     currentPlayers: 2,
-    settings: {
-      isPrivate: false,
-      allowGuests: true,
-      gridSize: 50,
-    },
+    lastActivity: new Date('2024-01-01'),
+    isPrivate: false,
+    allowGuests: true,
+    gridSize: 50,
+    gridVisible: true,
+    gridType: 'square',
+    snapToGrid: false,
+    gridOpacity: 0.6,
+    canvasWidth: 3000,
+    canvasHeight: 2000,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
-    lastActivity: new Date('2024-01-01'),
   };
 
   describe('serializeRoom', () => {
     it('should serialize a single room', () => {
-      const result = serializeRoom(mockRoom as RoomDocument);
+      const result = serializeRoom(mockRoom);
+      const singleData = getSingleData(result);
 
-      expect(result).toEqual({
-        data: {
-          type: 'room',
-          id: mockRoom._id?.toString(),
-          attributes: {
-            name: mockRoom.name,
-            description: mockRoom.description,
-            roomId: mockRoom.roomId,
-            isActive: mockRoom.isActive,
-            maxPlayers: mockRoom.maxPlayers,
-            currentPlayers: mockRoom.currentPlayers,
-            settings: mockRoom.settings,
-            createdAt: mockRoom.createdAt,
-            updatedAt: mockRoom.updatedAt,
-            lastActivity: mockRoom.lastActivity,
-          },
-          relationships: {
-            createdBy: {
-              data: {
-                type: 'user',
-                id: mockRoom.createdBy?.toString(),
-              },
-            },
-          },
-        },
+      expect(singleData.type).toBe('room');
+      expect(singleData.id).toBe('room-uuid-123');
+      expect(singleData.attributes.name).toBe('Test Room');
+      expect(singleData.attributes.roomCode).toBe('ABC123');
+      expect(singleData.attributes.slug).toBe('test-room');
+      expect(singleData.attributes.isActive).toBe(true);
+      expect(singleData.attributes.maxPlayers).toBe(5);
+      expect(singleData.attributes.currentPlayers).toBe(2);
+    });
+
+    it('should reconstruct settings as nested object', () => {
+      const result = serializeRoom(mockRoom);
+      const singleData = getSingleData(result);
+
+      expect(singleData.attributes.settings).toEqual({
+        isPrivate: false,
+        allowGuests: true,
+        gridSize: 50,
+        gridVisible: true,
+        gridType: 'square',
+        snapToGrid: false,
+        gridOpacity: 0.6,
+        canvasWidth: 3000,
+        canvasHeight: 2000,
+      });
+    });
+
+    it('should include createdBy relationship', () => {
+      const result = serializeRoom(mockRoom);
+      const singleData = getSingleData(result);
+
+      expect(singleData.relationships?.createdBy.data).toEqual({
+        type: 'user',
+        id: 'user-uuid-456',
       });
     });
 
     it('should serialize multiple rooms', () => {
-      const mockRoom2 = { ...mockRoom, _id: new Types.ObjectId(), name: 'Test Room 2' };
-      const result = serializeRoom([mockRoom, mockRoom2] as RoomDocument[]);
+      const mockRoom2: Room = {
+        ...mockRoom,
+        id: 'room-uuid-789',
+        name: 'Test Room 2',
+        slug: 'test-room-2',
+        roomCode: 'DEF456',
+      };
+      const result = serializeRoom([mockRoom, mockRoom2]);
 
       expect(Array.isArray(result.data)).toBe(true);
-      expect(result.data).toHaveLength(2);
-
       const arrayData = getArrayData(result);
-      expect(arrayData[0].type).toBe('room');
-      expect(arrayData[1].type).toBe('room');
+      expect(arrayData).toHaveLength(2);
       expect(arrayData[0].attributes.name).toBe('Test Room');
       expect(arrayData[1].attributes.name).toBe('Test Room 2');
-    });
-
-    it('should handle populated createdBy relationship', () => {
-      const populatedRoom = {
-        ...mockRoom,
-        createdBy: {
-          _id: new Types.ObjectId(),
-          firstName: 'John',
-          lastName: 'Doe',
-          displayName: 'John Doe',
-        },
-      };
-
-      const result = serializeRoom(populatedRoom as unknown as RoomDocument);
-      const singleData = getSingleData(result);
-
-      const createdByData = singleData.relationships?.createdBy.data;
-      if (createdByData && !Array.isArray(createdByData)) {
-        expect(createdByData.id).toBe(populatedRoom.createdBy._id.toString());
-      } else {
-        throw new Error('Expected single createdBy data');
-      }
-    });
-
-    it('should not include relationships when createdBy is not present', () => {
-      const roomWithoutCreatedBy = { ...mockRoom };
-      roomWithoutCreatedBy.createdBy = undefined;
-
-      const result = serializeRoom(roomWithoutCreatedBy as RoomDocument);
-      const singleData = getSingleData(result);
-
-      expect(singleData.relationships).toBeUndefined();
     });
   });
 
   describe('serializeRoomWithIncludes', () => {
-    it('should serialize room with included data', () => {
-      const includes = {
-        createdBy: {
-          id: 'user123',
+    it('should serialize room with included user data', () => {
+      const includes: Record<string, JsonApiResourceObject> = {
+        'user-user-uuid-456': {
+          id: 'user-uuid-456',
           type: 'user',
-          attributes: {
-            firstName: 'John',
-            lastName: 'Doe',
-            displayName: 'John Doe',
-          },
+          attributes: { firstName: 'John', lastName: 'Doe', displayName: 'John Doe' },
         },
       };
 
-      const result = serializeRoomWithIncludes(mockRoom as RoomDocument, includes);
-      const singleData = getSingleData(result);
+      const result = serializeRoomWithIncludes(mockRoom, includes);
 
-      expect(singleData.type).toBe('room');
-      expect(result.included).toEqual([includes.createdBy]);
+      expect(getSingleData(result).type).toBe('room');
+      expect(result.included).toHaveLength(1);
+      expect(result.included?.[0].type).toBe('user');
+      expect(result.included?.[0].id).toBe('user-uuid-456');
     });
 
-    it('should serialize room without includes when not provided', () => {
-      const result = serializeRoomWithIncludes(mockRoom as RoomDocument);
-      const singleData = getSingleData(result);
+    it('should not add included when not provided', () => {
+      const result = serializeRoomWithIncludes(mockRoom);
 
-      expect(singleData.type).toBe('room');
       expect(result.included).toBeUndefined();
     });
   });
 
   describe('deserializeRoom', () => {
-    it('should deserialize room resource', () => {
+    it('should deserialize room from JSON:API attributes', () => {
       const resource = {
         type: 'room',
         id: 'room123',
@@ -164,14 +138,6 @@ describe('Room Serializer', () => {
             gridSize: 50,
           },
         },
-        relationships: {
-          createdBy: {
-            data: {
-              type: 'user',
-              id: '507f1f77bcf86cd799439011',
-            },
-          },
-        },
       };
 
       const result = deserializeRoom(resource);
@@ -179,46 +145,29 @@ describe('Room Serializer', () => {
       expect(result.name).toBe('Test Room');
       expect(result.description).toBe('A test room');
       expect(result.maxPlayers).toBe(5);
-      expect(result.settings).toEqual({
-        isPrivate: false,
-        allowGuests: true,
-        gridSize: 50,
-      });
-      expect(result.createdBy).toBeInstanceOf(Types.ObjectId);
-      expect(result.createdBy?.toString()).toBe('507f1f77bcf86cd799439011');
+      expect(result.settings).toEqual({ isPrivate: false, allowGuests: true, gridSize: 50 });
     });
 
-    it('should handle room without relationships', () => {
+    it('should handle flat body without JSON:API envelope', () => {
       const resource = {
-        type: 'room',
-        id: 'room123',
-        attributes: {
-          name: 'Test Room',
-          description: 'A test room',
-        },
+        name: 'Test Room',
+        description: 'A test room',
+        maxPlayers: 8,
       };
 
-      const result = deserializeRoom(resource);
+      const result = deserializeRoom(resource as unknown as JsonApiResourceObject);
 
       expect(result.name).toBe('Test Room');
       expect(result.description).toBe('A test room');
-      expect(result.createdBy).toBeUndefined();
+      expect(result.maxPlayers).toBe(8);
     });
 
-    it('should handle room with createdBy in attributes', () => {
-      const resource = {
-        type: 'room',
-        id: 'room123',
-        attributes: {
-          name: 'Test Room',
-          createdBy: 'user123',
-        },
-      };
+    it('should return empty object when no fields provided', () => {
+      const result = deserializeRoom({} as unknown as JsonApiResourceObject);
 
-      const result = deserializeRoom(resource);
-
-      expect(result.name).toBe('Test Room');
-      expect(result.createdBy).toBe('user123');
+      expect(result.name).toBeUndefined();
+      expect(result.description).toBeUndefined();
+      expect(result.settings).toBeUndefined();
     });
   });
 });

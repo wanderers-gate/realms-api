@@ -20,7 +20,7 @@ export function registerChatHandlers(
         const older = await chatService.getMessagesBefore(roomId, before, limit);
         const messages = older.map((msg) => {
           const base = {
-            id: msg._id.toString(),
+            id: msg.id,
             userId: msg.userId,
             username: msg.username,
             message: msg.message,
@@ -66,11 +66,11 @@ export function registerChatHandlers(
       );
 
       const chatMessage = {
-        id: savedMessage._id.toString(),
+        id: savedMessage.id,
         userId: socket.id,
         username,
         message: displayMessage,
-        timestamp: savedMessage.timestamp,
+        timestamp: savedMessage.timestamp ?? new Date(),
         ...(diceRoll && { diceRoll }),
       };
 
@@ -79,11 +79,6 @@ export function registerChatHandlers(
         room.messages.push(chatMessage);
         if (room.messages.length > 100) {
           room.messages = room.messages.slice(-100);
-        }
-        if (room.messages.length % 10 === 0) {
-          chatService.cleanupOldMessages(roomId, 1000).catch((error) => {
-            logger.error(`[CHAT] Error cleaning up old messages for room ${roomId}:`, error);
-          });
         }
       }
 

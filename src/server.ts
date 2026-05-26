@@ -1,10 +1,11 @@
 import { createServer } from 'node:http';
-import mongoose from 'mongoose';
+import { and, eq } from 'drizzle-orm';
 import { Server, type Socket } from 'socket.io';
 import config from './config/config';
-import connectDB from './config/database';
+import runMigrations from './config/database';
+import { db } from './db';
+import { rooms as roomsTable, userPermissions } from './db/schema';
 import app from './index';
-import { RoomModel } from './models/room-model';
 import { chatService } from './services/chat.service';
 import {
   loadExistingCanvas,
@@ -89,11 +90,11 @@ io.on('connection', (socket: Socket) => {
       const recentMessages = await chatService.getRecentMessages(roomId, 50);
       room.messages = recentMessages.map((msg) => {
         const base = {
-          id: msg._id.toString(),
+          id: msg.id,
           userId: msg.userId,
           username: msg.username,
           message: msg.message,
-          timestamp: msg.timestamp,
+          timestamp: msg.timestamp ?? new Date(),
         };
         if (!msg.diceRoll) return base;
         try {
@@ -107,19 +108,18 @@ io.on('connection', (socket: Socket) => {
       room.messages = [];
     }
 
-    const [existingCanvas, existingTokens, roomDoc] = await Promise.all([
+    const [existingCanvas, existingTokens, roomPerms] = await Promise.all([
       loadExistingCanvas(roomId),
       loadTokens(roomId),
-      RoomModel.findOne({ roomId }),
+      db.select().from(userPermissions).where(eq(userPermissions.roomId, roomId)),
     ]);
-    const userPermissions = roomDoc?.userPermissions || [];
 
     socket.emit('room-joined', {
       roomId,
       users: Array.from(room.users.values()),
       recentMessages: room.messages,
       canvasOperations: existingCanvas,
-      userPermissions,
+      userPermissions: roomPerms,
       tokens: existingTokens,
     });
 
@@ -131,30 +131,27 @@ io.on('connection', (socket: Socket) => {
     'update-permissions',
     async (data: { roomId: string; targetUserId: string; canModifyDrawings: boolean }) => {
       try {
-        const roomDoc = await RoomModel.findOne({ roomId: data.roomId });
-        if (!roomDoc) return;
+        const room = await db.query.rooms.findFirst({ where: eq(roomsTable.id, data.roomId) });
+        if (!room) return;
 
-        const isDM =
-          socket.authenticatedUserId && roomDoc.createdBy.toString() === socket.authenticatedUserId;
+        const isDM = socket.authenticatedUserId && room.createdById === socket.authenticatedUserId;
         if (!isDM) {
           logger.warn(`[PERMISSIONS] Unauthorized permission change attempt by ${socket.id}`);
           return;
         }
 
-        const existingIndex = roomDoc.userPermissions.findIndex(
-          (p) => p.userId === data.targetUserId
-        );
-        if (existingIndex >= 0) {
-          roomDoc.userPermissions[existingIndex].canModifyDrawings = data.canModifyDrawings;
-        } else {
-          roomDoc.userPermissions.push({
+        await db
+          .insert(userPermissions)
+          .values({
+            roomId: data.roomId,
             userId: data.targetUserId,
             canModifyDrawings: data.canModifyDrawings,
+          })
+          .onConflictDoUpdate({
+            target: [userPermissions.roomId, userPermissions.userId],
+            set: { canModifyDrawings: data.canModifyDrawings },
           });
-        }
-        roomDoc.markModified('userPermissions');
 
-        await roomDoc.save();
         logger.info(
           `[PERMISSIONS] Updated permissions for ${data.targetUserId} in room ${data.roomId}`
         );
@@ -198,7 +195,7 @@ io.on('connection', (socket: Socket) => {
 });
 
 const startServer = async (): Promise<void> => {
-  await connectDB();
+  runMigrations();
   server = httpServer.listen(config.port, () => {
     logger.info(`Server is running on port ${config.port}`);
     logger.info('Socket.IO server initialized');
@@ -215,8 +212,6 @@ const shutdown = async (): Promise<void> => {
       });
     });
   }
-  await mongoose.connection.close();
-  logger.info('MongoDB connection closed');
   process.exit(0);
 };
 

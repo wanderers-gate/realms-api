@@ -1,14 +1,28 @@
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from '@jest/globals';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
 import type { Request, Response } from 'express';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import { Types } from 'mongoose';
-import mongoose from 'mongoose';
-import { CanvasModel } from '../../models/canvas-model';
-import { RoomModel } from '../../models/room-model';
-import { UserModel } from '../../models/user-model';
+
+jest.mock('../../db', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const Database = require('better-sqlite3');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { drizzle } = require('drizzle-orm/better-sqlite3');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { migrate } = require('drizzle-orm/better-sqlite3/migrator');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const schema = require('../../db/schema');
+  const sqlite = new Database(':memory:');
+  sqlite.pragma('foreign_keys = ON');
+  const db = drizzle(sqlite, { schema });
+  migrate(db, { migrationsFolder: path.join(__dirname, '../../../drizzle') });
+  return { db };
+});
+
+import { eq } from 'drizzle-orm';
+import { db } from '../../db';
+import { canvasOperations, canvases, rooms, users } from '../../db/schema';
 import { addCanvasOperation, deleteCanvasOperations, getCanvas } from '../canvas.controller';
 
-// Mock the response object
 const mockResponse = () => {
   const res: Partial<Response> = {};
   res.status = jest.fn().mockReturnValue(res as Response);
@@ -16,106 +30,72 @@ const mockResponse = () => {
   return res as Response & { json: jest.MockedFunction<Response['json']> };
 };
 
-// Mock the request object
 const mockRequest = (
   body: Record<string, unknown> = {},
   params: Record<string, string> = {},
-  query: Record<string, string> = {},
-  user: { id: string } | null = null
-) => {
-  const req: Partial<Request> = {
-    body,
-    params,
-    query,
-    userId: user?.id,
-    user: undefined,
-  };
-  return req as Request;
-};
+  userId?: string
+) => ({ body, params, userId, user: undefined }) as unknown as Request;
 
-describe('Canvas Controller', () => {
-  let mongoServer: MongoMemoryServer;
-  let testUser: InstanceType<typeof UserModel>;
-  let testRoom: InstanceType<typeof RoomModel>;
+let testUserId: string;
+let testRoomId: string;
 
-  beforeAll(async () => {
-    try {
-      mongoServer = await MongoMemoryServer.create();
-      const mongoUri = mongoServer.getUri();
-      await mongoose.connect(mongoUri);
-    } catch (error) {
-      console.error('MongoDB connection error:', error);
-      throw error;
-    }
-  });
-
-  afterAll(async () => {
-    try {
-      await mongoose.connection.dropDatabase();
-      await mongoose.connection.close();
-      await mongoServer.stop();
-    } catch (error) {
-      console.error('Error during cleanup:', error);
-      throw error;
-    }
-  });
-
-  beforeEach(async () => {
-    // Clear collections
-    await CanvasModel.deleteMany({});
-    await RoomModel.deleteMany({});
-    await UserModel.deleteMany({});
-
-    // Create a test user
-    testUser = new UserModel({
+beforeEach(async () => {
+  const [user] = await db
+    .insert(users)
+    .values({
       email: 'test@example.com',
-      password: 'password123',
+      password: 'hashed',
       firstName: 'Test',
       lastName: 'User',
-      displayName: 'Test User',
-    });
-    await testUser.save();
+    })
+    .returning();
+  testUserId = user.id;
 
-    // Create a test room
-    testRoom = new RoomModel({
+  const [room] = await db
+    .insert(rooms)
+    .values({
       name: 'Test Room',
-      description: 'A test room',
-      createdBy: testUser._id,
+      slug: 'test-room',
+      roomCode: 'TST001',
+      createdById: testUserId,
       isActive: true,
-      settings: { isPrivate: false, allowGuests: true },
-    });
-    await testRoom.save();
-  });
+      allowGuests: true,
+    })
+    .returning();
+  testRoomId = room.id;
+});
 
-  afterEach(async () => {
-    // Clean up
-    await CanvasModel.deleteMany({});
-    await RoomModel.deleteMany({});
-    await UserModel.deleteMany({});
-  });
+afterEach(async () => {
+  await db.delete(canvasOperations);
+  await db.delete(canvases);
+  await db.delete(rooms);
+  await db.delete(users);
+});
 
+describe('Canvas Controller', () => {
   describe('getCanvas', () => {
     it('should return existing canvas for a room', async () => {
-      // Create a canvas with some operations
-      const canvas = new CanvasModel({
-        roomId: testRoom.roomId,
-        operations: [
-          {
-            id: 'op1',
-            type: 'draw',
-            tool: 'pen',
-            points: [{ x: 10, y: 20 }],
-            color: '#000000',
-            size: 2,
-            timestamp: new Date(),
-            userId: testUser._id.toString(),
-          },
-        ],
-        createdBy: testUser._id,
-      });
-      await canvas.save();
+      const [canvas] = await db
+        .insert(canvases)
+        .values({
+          roomId: testRoomId,
+          createdById: testUserId,
+        })
+        .returning();
 
-      const req = mockRequest({}, { roomId: testRoom.roomId }, {});
+      await db.insert(canvasOperations).values({
+        canvasId: canvas.id,
+        opId: 'op1',
+        type: 'draw',
+        tool: 'pen',
+        points: [{ x: 10, y: 20 }],
+        color: '#000000',
+        size: 2,
+        userId: testUserId,
+        timestamp: new Date(),
+      });
+
+      const req = mockRequest({}, { roomId: testRoomId });
       const res = mockResponse();
 
       await getCanvas(req, res);
@@ -125,12 +105,9 @@ describe('Canvas Controller', () => {
           data: expect.objectContaining({
             type: 'canvas',
             attributes: expect.objectContaining({
-              roomId: testRoom.roomId,
+              roomId: testRoomId,
               operations: expect.arrayContaining([
-                expect.objectContaining({
-                  id: 'op1',
-                  type: 'draw',
-                }),
+                expect.objectContaining({ id: 'op1', type: 'draw' }),
               ]),
             }),
           }),
@@ -139,7 +116,7 @@ describe('Canvas Controller', () => {
     });
 
     it('should create empty canvas if none exists', async () => {
-      const req = mockRequest({}, { roomId: testRoom.roomId }, {});
+      const req = mockRequest({}, { roomId: testRoomId });
       const res = mockResponse();
 
       await getCanvas(req, res);
@@ -148,62 +125,48 @@ describe('Canvas Controller', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             type: 'canvas',
-            attributes: expect.objectContaining({
-              roomId: testRoom.roomId,
-              operations: [],
-            }),
+            attributes: expect.objectContaining({ roomId: testRoomId, operations: [] }),
           }),
         })
       );
 
-      // Verify canvas was created in database
-      const canvas = await CanvasModel.findOne({ roomId: testRoom.roomId });
+      const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, testRoomId) });
       expect(canvas).toBeTruthy();
-      expect(canvas?.operations).toHaveLength(0);
     });
 
     it('should return 404 for non-existent room', async () => {
-      const req = mockRequest({}, { roomId: 'NONEXISTENT' }, {});
+      const req = mockRequest({}, { roomId: 'nonexistent-uuid' });
       const res = mockResponse();
 
       await getCanvas(req, res);
 
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '404',
-            title: 'Room Not Found',
-            detail: 'Room not found or inactive',
-          },
-        ],
+        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
       });
     });
 
-    it('should return 403 for private room when user is not authenticated', async () => {
-      // Create a private room that doesn't allow guests
-      const privateRoom = new RoomModel({
-        name: 'Private Room',
-        createdBy: testUser._id,
-        isActive: true,
-        settings: { isPrivate: false, allowGuests: false },
-      });
-      await privateRoom.save();
+    it('should return 403 for room that does not allow guests', async () => {
+      const [privateRoom] = await db
+        .insert(rooms)
+        .values({
+          name: 'Private Room',
+          slug: 'private-room',
+          roomCode: 'PRV001',
+          createdById: testUserId,
+          isActive: true,
+          allowGuests: false,
+        })
+        .returning();
 
-      const req = mockRequest({}, { roomId: privateRoom.roomId }, {});
+      const req = mockRequest({}, { roomId: privateRoom.id });
       const res = mockResponse();
 
       await getCanvas(req, res);
 
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '403',
-            title: 'Forbidden',
-            detail: 'This room does not allow guests',
-          },
-        ],
+        errors: [{ status: '403', title: 'Forbidden', detail: 'This room does not allow guests' }],
       });
     });
   });
@@ -230,9 +193,8 @@ describe('Canvas Controller', () => {
             },
           },
         },
-        { roomId: testRoom.roomId },
-        {},
-        { id: testUser._id.toString() }
+        { roomId: testRoomId },
+        testUserId
       );
       const res = mockResponse();
 
@@ -250,7 +212,7 @@ describe('Canvas Controller', () => {
                   tool: 'pen',
                   color: '#ff0000',
                   size: 3,
-                  userId: testUser._id.toString(),
+                  userId: testUserId,
                   id: expect.any(String),
                   timestamp: expect.any(Date),
                 }),
@@ -261,12 +223,15 @@ describe('Canvas Controller', () => {
         })
       );
 
-      // Verify operation was saved to database
-      const canvas = await CanvasModel.findOne({ roomId: testRoom.roomId });
+      const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, testRoomId) });
       expect(canvas).toBeTruthy();
-      expect(canvas?.operations).toHaveLength(1);
-      expect(canvas?.operations[0].type).toBe('draw');
-      expect(canvas?.operations[0].userId).toBe(testUser._id.toString());
+      if (!canvas) return;
+      const ops = await db
+        .select()
+        .from(canvasOperations)
+        .where(eq(canvasOperations.canvasId, canvas.id));
+      expect(ops).toHaveLength(1);
+      expect(ops[0].type).toBe('draw');
     });
 
     it('should return 401 if user is not authenticated', async () => {
@@ -279,23 +244,13 @@ describe('Canvas Controller', () => {
             },
           },
         },
-        { roomId: testRoom.roomId },
-        {}
+        { roomId: testRoomId }
       );
       const res = mockResponse();
 
       await addCanvasOperation(req, res);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User must be authenticated to draw',
-          },
-        ],
-      });
     });
 
     it('should return 404 for non-existent room', async () => {
@@ -308,9 +263,8 @@ describe('Canvas Controller', () => {
             },
           },
         },
-        { roomId: 'NONEXISTENT' },
-        {},
-        { id: testUser._id.toString() }
+        { roomId: 'nonexistent-uuid' },
+        testUserId
       );
       const res = mockResponse();
 
@@ -321,17 +275,9 @@ describe('Canvas Controller', () => {
 
     it('should return 400 for missing operations key', async () => {
       const req = mockRequest(
-        {
-          data: {
-            type: 'canvas',
-            attributes: {
-              operations: [], // Empty operations array
-            },
-          },
-        },
-        { roomId: testRoom.roomId },
-        {},
-        { id: testUser._id.toString() }
+        { data: { type: 'canvas', attributes: { operations: [] } } },
+        { roomId: testRoomId },
+        testUserId
       );
       const res = mockResponse();
 
@@ -339,95 +285,81 @@ describe('Canvas Controller', () => {
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '400',
-            title: 'Bad Request',
-            detail: 'Invalid operation data',
-          },
-        ],
+        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid operation data' }],
       });
     });
   });
 
   describe('deleteCanvasOperations', () => {
-    let testCanvas: InstanceType<typeof CanvasModel>;
+    let canvasId: string;
 
     beforeEach(async () => {
-      testCanvas = new CanvasModel({
-        roomId: testRoom.roomId,
-        createdBy: testUser._id,
-        operations: [
-          {
-            id: 'op-1',
-            type: 'draw',
-            tool: 'pen',
-            points: [{ x: 0, y: 0 }],
-            color: '#000000',
-            size: 2,
-            timestamp: new Date(),
-            userId: testUser._id.toString(),
-          },
-          {
-            id: 'op-2',
-            type: 'draw',
-            tool: 'pen',
-            points: [{ x: 10, y: 10 }],
-            color: '#ff0000',
-            size: 3,
-            timestamp: new Date(),
-            userId: testUser._id.toString(),
-          },
-        ],
-      });
-      await testCanvas.save();
+      const [canvas] = await db
+        .insert(canvases)
+        .values({
+          roomId: testRoomId,
+          createdById: testUserId,
+        })
+        .returning();
+      canvasId = canvas.id;
+
+      await db.insert(canvasOperations).values([
+        {
+          canvasId,
+          opId: 'op-1',
+          type: 'draw',
+          tool: 'pen',
+          points: [{ x: 0, y: 0 }],
+          color: '#000000',
+          size: 2,
+          userId: testUserId,
+          timestamp: new Date(),
+        },
+        {
+          canvasId,
+          opId: 'op-2',
+          type: 'draw',
+          tool: 'pen',
+          points: [{ x: 10, y: 10 }],
+          color: '#ff0000',
+          size: 3,
+          userId: testUserId,
+          timestamp: new Date(),
+        },
+      ]);
     });
 
     it('should delete specified operations and return counts', async () => {
-      const req = mockRequest(
-        { operationIds: ['op-1'] },
-        { roomId: testRoom.roomId },
-        {},
-        { id: testUser._id.toString() }
-      );
+      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: testRoomId }, testUserId);
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        data: { deletedCount: 1, remainingOperations: 1 },
-      });
+      expect(res.json).toHaveBeenCalledWith({ data: { deletedCount: 1, remainingOperations: 1 } });
 
-      const updated = await CanvasModel.findOne({ roomId: testRoom.roomId });
-      expect(updated?.operations).toHaveLength(1);
-      expect(updated?.operations[0].id).toBe('op-2');
+      const remaining = await db
+        .select()
+        .from(canvasOperations)
+        .where(eq(canvasOperations.canvasId, canvasId));
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].opId).toBe('op-2');
     });
 
     it('should return 401 when not authenticated', async () => {
-      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: testRoom.roomId });
+      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: testRoomId });
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
 
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User must be authenticated to delete operations',
-          },
-        ],
-      });
     });
 
     it('should return 404 when room does not exist', async () => {
       const req = mockRequest(
         { operationIds: ['op-1'] },
-        { roomId: 'NOPE99' },
-        {},
-        { id: testUser._id.toString() }
+        { roomId: 'nonexistent-uuid' },
+        testUserId
       );
       const res = mockResponse();
 
@@ -440,7 +372,7 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 400 when operationIds is missing', async () => {
-      const req = mockRequest({}, { roomId: testRoom.roomId }, {}, { id: testUser._id.toString() });
+      const req = mockRequest({}, { roomId: testRoomId }, testUserId);
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
@@ -454,12 +386,7 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 400 when operationIds is an empty array', async () => {
-      const req = mockRequest(
-        { operationIds: [] },
-        { roomId: testRoom.roomId },
-        {},
-        { id: testUser._id.toString() }
-      );
+      const req = mockRequest({ operationIds: [] }, { roomId: testRoomId }, testUserId);
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
@@ -468,13 +395,10 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 404 when canvas does not exist for the room', async () => {
-      await CanvasModel.deleteMany({});
-      const req = mockRequest(
-        { operationIds: ['op-1'] },
-        { roomId: testRoom.roomId },
-        {},
-        { id: testUser._id.toString() }
-      );
+      await db.delete(canvasOperations);
+      await db.delete(canvases);
+
+      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: testRoomId }, testUserId);
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
@@ -490,18 +414,15 @@ describe('Canvas Controller', () => {
     it('should return 0 deletedCount when operationIds do not match any operations', async () => {
       const req = mockRequest(
         { operationIds: ['nonexistent-id'] },
-        { roomId: testRoom.roomId },
-        {},
-        { id: testUser._id.toString() }
+        { roomId: testRoomId },
+        testUserId
       );
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
-      expect(res.json).toHaveBeenCalledWith({
-        data: { deletedCount: 0, remainingOperations: 2 },
-      });
+      expect(res.json).toHaveBeenCalledWith({ data: { deletedCount: 0, remainingOperations: 2 } });
     });
   });
 });

@@ -1,3 +1,4 @@
+import path from 'node:path';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -7,26 +8,12 @@ interface Config {
   nodeEnv: string;
   jwtSecret: string;
   allowedOrigins: string[];
-  mongodb: {
-    uri: string;
-    options: {
-      autoIndex: boolean;
-    };
+  dataDir: string;
+  database: {
+    provider: 'sqlite' | 'postgresql';
+    url: string;
   };
 }
-
-const getMongoDBUri = (): string => {
-  const useK8s = process.env.USE_K8S_DB === 'true';
-
-  if (useK8s) {
-    return (
-      process.env.MONGODB_K8S_URI ||
-      'mongodb://admin:mongodb-password@localhost:27018/realms?authSource=admin'
-    );
-  }
-
-  return process.env.MONGODB_URI || 'mongodb://localhost:27017/realms';
-};
 
 const config: Config = {
   port: Number(process.env.PORT) || 3001,
@@ -42,11 +29,12 @@ const config: Config = {
         'http://realmsapp.io',
         'https://realmsapp.io',
       ],
-  mongodb: {
-    uri: getMongoDBUri(),
-    options: {
-      autoIndex: true,
-    },
+  dataDir: process.env.REALMS_DATA_DIR || path.join(__dirname, '../../../realms_data'),
+  database: {
+    provider: (process.env.DATABASE_PROVIDER as 'sqlite' | 'postgresql') || 'sqlite',
+    url:
+      process.env.DATABASE_URL ||
+      `file:${path.join(process.env.REALMS_DATA_DIR || path.join(__dirname, '../../../realms_data'), 'realms.db')}`,
   },
 };
 

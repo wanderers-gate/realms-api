@@ -2,6 +2,21 @@ import type { DiceRollResult } from './helpers/dice';
 
 export type { DiceRollResult };
 
+export interface Token {
+  id: string;
+  roomId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+  label: string;
+  ownerId: string;
+  ownerIds: string[];
+  imageUrl?: string;
+  visible: boolean;
+}
+
 export interface RoomUser {
   id: string;
   authenticatedUserId?: string;

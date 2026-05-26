@@ -1,35 +1,33 @@
+import { eq } from 'drizzle-orm';
 import type { NextFunction, Request, Response } from 'express';
-import type { UserDocument } from '../models/user-model';
-import { UserModel } from '../models/user-model';
+import { db } from '../db';
+import { users } from '../db/schema';
 import { getTokenFromHeaders, verifyJwt } from '../utils/jwt';
 
-export interface AuthenticatedRequest<T extends UserDocument = UserDocument> extends Request {
-  user?: T;
-  userId?: string;
-}
-
-export function authenticateOptionalJwt<T extends UserDocument = UserDocument>() {
-  return async (req: AuthenticatedRequest<T>, _res: Response, next: NextFunction) => {
-    const token = getTokenFromHeaders(req);
-    if (!token) {
-      next();
-      return;
-    }
-
-    const payload = verifyJwt(token);
-    if (!payload) {
-      next();
-      return;
-    }
-
-    const user = await UserModel.findById(payload.userId);
-    if (!user) {
-      next();
-      return;
-    }
-
-    req.user = user as T;
-    req.userId = payload.userId;
+export async function authenticateOptionalJwt(
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> {
+  const token = getTokenFromHeaders(req);
+  if (!token) {
     next();
-  };
+    return;
+  }
+
+  const payload = verifyJwt(token);
+  if (!payload) {
+    next();
+    return;
+  }
+
+  const user = await db.query.users.findFirst({ where: eq(users.id, payload.userId) });
+  if (!user) {
+    next();
+    return;
+  }
+
+  req.user = user;
+  req.userId = payload.userId;
+  next();
 }

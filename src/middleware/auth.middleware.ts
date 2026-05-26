@@ -1,5 +1,7 @@
+import { eq } from 'drizzle-orm';
 import type { NextFunction, Request, Response } from 'express';
-import { type UserDocument, UserModel } from '../models/user-model';
+import { db } from '../db';
+import { users } from '../db/schema';
 import { verifyJwt } from '../utils/jwt';
 
 export const authenticate = async (
@@ -25,7 +27,7 @@ export const authenticate = async (
       return;
     }
 
-    const user = await UserModel.findById(decoded.userId);
+    const user = await db.query.users.findFirst({ where: eq(users.id, decoded.userId) });
     if (!user) {
       res.status(401).json({
         errors: [{ status: '401', title: 'Unauthorized', detail: 'User not found' }],
@@ -33,7 +35,6 @@ export const authenticate = async (
       return;
     }
 
-    // Token version mismatch means the user has logged out on another device
     if (user.tokenVersion !== decoded.tokenVersion) {
       res.status(401).json({
         errors: [{ status: '401', title: 'Unauthorized', detail: 'Invalid token' }],
@@ -42,7 +43,7 @@ export const authenticate = async (
     }
 
     req.userId = decoded.userId;
-    req.user = user as UserDocument;
+    req.user = user;
     next();
   } catch (_error) {
     res.status(500).json({
