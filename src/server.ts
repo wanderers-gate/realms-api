@@ -118,7 +118,8 @@ io.on('connection', (socket: Socket) => {
       roomId,
       users: Array.from(room.users.values()),
       recentMessages: room.messages,
-      canvasOperations: existingCanvas,
+      canvasOperations: existingCanvas.operations,
+      mapUrl: existingCanvas.mapUrl,
       userPermissions: roomPerms,
       tokens: existingTokens,
     });

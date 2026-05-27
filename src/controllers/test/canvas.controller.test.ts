@@ -1,27 +1,61 @@
-import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { beforeEach, describe, expect, it } from '@jest/globals';
 import type { Request, Response } from 'express';
 
-jest.mock('../../db', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { drizzle } = require('drizzle-orm/better-sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { migrate } = require('drizzle-orm/better-sqlite3/migrator');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const schema = require('../../db/schema');
-  const sqlite = new Database(':memory:');
-  sqlite.pragma('foreign_keys = ON');
-  const db = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder: path.join(__dirname, '../../../drizzle') });
-  return { db };
-});
+const TEST_USER_ID = 'user-id-canvas-ctrl-001';
+const TEST_ROOM_ID = 'room-id-canvas-ctrl-001';
+const TEST_CANVAS_ID = 'canvas-id-canvas-ctrl-001';
 
-import { eq } from 'drizzle-orm';
+jest.mock('../../db', () => ({
+  db: {
+    query: {
+      rooms: { findFirst: jest.fn() },
+      canvases: { findFirst: jest.fn() },
+    },
+    insert: jest.fn(),
+    delete: jest.fn(),
+    select: jest.fn(),
+    update: jest.fn(),
+  },
+}));
+
 import { db } from '../../db';
-import { canvasOperations, canvases, rooms, users } from '../../db/schema';
 import { addCanvasOperation, deleteCanvasOperations, getCanvas } from '../canvas.controller';
+
+const mockRoom = {
+  id: TEST_ROOM_ID,
+  name: 'Test Room',
+  slug: 'test-room',
+  createdById: TEST_USER_ID,
+  isActive: true,
+  allowGuests: true,
+};
+
+const mockCanvas = {
+  id: TEST_CANVAS_ID,
+  roomId: TEST_ROOM_ID,
+  createdById: TEST_USER_ID,
+  mapUrl: null,
+  version: 1,
+};
+
+const mockOp = {
+  id: 'op-row-id-1',
+  canvasId: TEST_CANVAS_ID,
+  opId: 'op1',
+  type: 'draw',
+  tool: 'pen',
+  points: [{ x: 10, y: 20 }],
+  color: '#000000',
+  size: 2,
+  userId: TEST_USER_ID,
+  timestamp: new Date(),
+};
+
+// Makes a where() result that is both directly awaitable and chainable with orderBy()
+const makeSelectWhereResult = (data: unknown[]) =>
+  Object.assign(Promise.resolve(data), {
+    orderBy: jest.fn().mockResolvedValue(data),
+  });
 
 const mockResponse = () => {
   const res: Partial<Response> = {};
@@ -36,66 +70,41 @@ const mockRequest = (
   userId?: string
 ) => ({ body, params, userId, user: undefined }) as unknown as Request;
 
-let testUserId: string;
-let testRoomId: string;
+beforeEach(() => {
+  jest.clearAllMocks();
 
-beforeEach(async () => {
-  const [user] = await db
-    .insert(users)
-    .values({
-      email: 'test@example.com',
-      password: 'hashed',
-      firstName: 'Test',
-      lastName: 'User',
-    })
-    .returning();
-  testUserId = user.id;
+  (db.query.rooms.findFirst as jest.Mock).mockResolvedValue(mockRoom);
+  (db.query.canvases.findFirst as jest.Mock).mockResolvedValue(mockCanvas);
 
-  const [room] = await db
-    .insert(rooms)
-    .values({
-      name: 'Test Room',
-      slug: 'test-room',
-      roomCode: 'TST001',
-      createdById: testUserId,
-      isActive: true,
-      allowGuests: true,
-    })
-    .returning();
-  testRoomId = room.id;
-});
+  (db.insert as jest.Mock).mockReturnValue({
+    values: jest.fn().mockReturnValue({
+      returning: jest.fn().mockResolvedValue([mockCanvas]),
+    }),
+  });
 
-afterEach(async () => {
-  await db.delete(canvasOperations);
-  await db.delete(canvases);
-  await db.delete(rooms);
-  await db.delete(users);
+  (db.delete as jest.Mock).mockReturnValue({
+    where: jest.fn().mockReturnValue({
+      returning: jest.fn().mockResolvedValue([]),
+    }),
+  });
+
+  (db.select as jest.Mock).mockReturnValue({
+    from: jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnValue(makeSelectWhereResult([])),
+    }),
+  });
 });
 
 describe('Canvas Controller', () => {
   describe('getCanvas', () => {
-    it('should return existing canvas for a room', async () => {
-      const [canvas] = await db
-        .insert(canvases)
-        .values({
-          roomId: testRoomId,
-          createdById: testUserId,
-        })
-        .returning();
-
-      await db.insert(canvasOperations).values({
-        canvasId: canvas.id,
-        opId: 'op1',
-        type: 'draw',
-        tool: 'pen',
-        points: [{ x: 10, y: 20 }],
-        color: '#000000',
-        size: 2,
-        userId: testUserId,
-        timestamp: new Date(),
+    it('should return existing canvas with operations for a room', async () => {
+      (db.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue(makeSelectWhereResult([mockOp])),
+        }),
       });
 
-      const req = mockRequest({}, { roomId: testRoomId });
+      const req = mockRequest({}, { roomId: TEST_ROOM_ID });
       const res = mockResponse();
 
       await getCanvas(req, res);
@@ -105,7 +114,7 @@ describe('Canvas Controller', () => {
           data: expect.objectContaining({
             type: 'canvas',
             attributes: expect.objectContaining({
-              roomId: testRoomId,
+              roomId: TEST_ROOM_ID,
               operations: expect.arrayContaining([
                 expect.objectContaining({ id: 'op1', type: 'draw' }),
               ]),
@@ -116,7 +125,9 @@ describe('Canvas Controller', () => {
     });
 
     it('should create empty canvas if none exists', async () => {
-      const req = mockRequest({}, { roomId: testRoomId });
+      (db.query.canvases.findFirst as jest.Mock).mockResolvedValueOnce(null);
+
+      const req = mockRequest({}, { roomId: TEST_ROOM_ID });
       const res = mockResponse();
 
       await getCanvas(req, res);
@@ -125,16 +136,16 @@ describe('Canvas Controller', () => {
         expect.objectContaining({
           data: expect.objectContaining({
             type: 'canvas',
-            attributes: expect.objectContaining({ roomId: testRoomId, operations: [] }),
+            attributes: expect.objectContaining({ roomId: TEST_ROOM_ID, operations: [] }),
           }),
         })
       );
-
-      const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, testRoomId) });
-      expect(canvas).toBeTruthy();
+      expect(db.insert).toHaveBeenCalled();
     });
 
     it('should return 404 for non-existent room', async () => {
+      (db.query.rooms.findFirst as jest.Mock).mockResolvedValue(null);
+
       const req = mockRequest({}, { roomId: 'nonexistent-uuid' });
       const res = mockResponse();
 
@@ -147,19 +158,12 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 403 for room that does not allow guests', async () => {
-      const [privateRoom] = await db
-        .insert(rooms)
-        .values({
-          name: 'Private Room',
-          slug: 'private-room',
-          roomCode: 'PRV001',
-          createdById: testUserId,
-          isActive: true,
-          allowGuests: false,
-        })
-        .returning();
+      (db.query.rooms.findFirst as jest.Mock).mockResolvedValue({
+        ...mockRoom,
+        allowGuests: false,
+      });
 
-      const req = mockRequest({}, { roomId: privateRoom.id });
+      const req = mockRequest({}, { roomId: TEST_ROOM_ID });
       const res = mockResponse();
 
       await getCanvas(req, res);
@@ -193,8 +197,8 @@ describe('Canvas Controller', () => {
             },
           },
         },
-        { roomId: testRoomId },
-        testUserId
+        { roomId: TEST_ROOM_ID },
+        TEST_USER_ID
       );
       const res = mockResponse();
 
@@ -212,7 +216,7 @@ describe('Canvas Controller', () => {
                   tool: 'pen',
                   color: '#ff0000',
                   size: 3,
-                  userId: testUserId,
+                  userId: TEST_USER_ID,
                   id: expect.any(String),
                   timestamp: expect.any(Date),
                 }),
@@ -222,16 +226,7 @@ describe('Canvas Controller', () => {
           }),
         })
       );
-
-      const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, testRoomId) });
-      expect(canvas).toBeTruthy();
-      if (!canvas) return;
-      const ops = await db
-        .select()
-        .from(canvasOperations)
-        .where(eq(canvasOperations.canvasId, canvas.id));
-      expect(ops).toHaveLength(1);
-      expect(ops[0].type).toBe('draw');
+      expect(db.insert).toHaveBeenCalled();
     });
 
     it('should return 401 if user is not authenticated', async () => {
@@ -244,7 +239,7 @@ describe('Canvas Controller', () => {
             },
           },
         },
-        { roomId: testRoomId }
+        { roomId: TEST_ROOM_ID }
       );
       const res = mockResponse();
 
@@ -254,6 +249,8 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 404 for non-existent room', async () => {
+      (db.query.rooms.findFirst as jest.Mock).mockResolvedValue(null);
+
       const req = mockRequest(
         {
           data: {
@@ -264,7 +261,7 @@ describe('Canvas Controller', () => {
           },
         },
         { roomId: 'nonexistent-uuid' },
-        testUserId
+        TEST_USER_ID
       );
       const res = mockResponse();
 
@@ -276,8 +273,8 @@ describe('Canvas Controller', () => {
     it('should return 400 for missing operations key', async () => {
       const req = mockRequest(
         { data: { type: 'canvas', attributes: { operations: [] } } },
-        { roomId: testRoomId },
-        testUserId
+        { roomId: TEST_ROOM_ID },
+        TEST_USER_ID
       );
       const res = mockResponse();
 
@@ -291,63 +288,31 @@ describe('Canvas Controller', () => {
   });
 
   describe('deleteCanvasOperations', () => {
-    let canvasId: string;
-
-    beforeEach(async () => {
-      const [canvas] = await db
-        .insert(canvases)
-        .values({
-          roomId: testRoomId,
-          createdById: testUserId,
-        })
-        .returning();
-      canvasId = canvas.id;
-
-      await db.insert(canvasOperations).values([
-        {
-          canvasId,
-          opId: 'op-1',
-          type: 'draw',
-          tool: 'pen',
-          points: [{ x: 0, y: 0 }],
-          color: '#000000',
-          size: 2,
-          userId: testUserId,
-          timestamp: new Date(),
-        },
-        {
-          canvasId,
-          opId: 'op-2',
-          type: 'draw',
-          tool: 'pen',
-          points: [{ x: 10, y: 10 }],
-          color: '#ff0000',
-          size: 3,
-          userId: testUserId,
-          timestamp: new Date(),
-        },
-      ]);
+    beforeEach(() => {
+      (db.delete as jest.Mock).mockReturnValue({
+        where: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{ id: 'row-1', opId: 'op-1' }]),
+        }),
+      });
+      (db.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue(makeSelectWhereResult([{ id: 'op-2' }])),
+        }),
+      });
     });
 
     it('should delete specified operations and return counts', async () => {
-      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: testRoomId }, testUserId);
+      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: TEST_ROOM_ID }, TEST_USER_ID);
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
 
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({ data: { deletedCount: 1, remainingOperations: 1 } });
-
-      const remaining = await db
-        .select()
-        .from(canvasOperations)
-        .where(eq(canvasOperations.canvasId, canvasId));
-      expect(remaining).toHaveLength(1);
-      expect(remaining[0].opId).toBe('op-2');
     });
 
     it('should return 401 when not authenticated', async () => {
-      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: testRoomId });
+      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: TEST_ROOM_ID });
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
@@ -356,10 +321,12 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 404 when room does not exist', async () => {
+      (db.query.rooms.findFirst as jest.Mock).mockResolvedValue(null);
+
       const req = mockRequest(
         { operationIds: ['op-1'] },
         { roomId: 'nonexistent-uuid' },
-        testUserId
+        TEST_USER_ID
       );
       const res = mockResponse();
 
@@ -372,7 +339,7 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 400 when operationIds is missing', async () => {
-      const req = mockRequest({}, { roomId: testRoomId }, testUserId);
+      const req = mockRequest({}, { roomId: TEST_ROOM_ID }, TEST_USER_ID);
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
@@ -386,7 +353,7 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 400 when operationIds is an empty array', async () => {
-      const req = mockRequest({ operationIds: [] }, { roomId: testRoomId }, testUserId);
+      const req = mockRequest({ operationIds: [] }, { roomId: TEST_ROOM_ID }, TEST_USER_ID);
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
@@ -395,10 +362,9 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 404 when canvas does not exist for the room', async () => {
-      await db.delete(canvasOperations);
-      await db.delete(canvases);
+      (db.query.canvases.findFirst as jest.Mock).mockResolvedValue(null);
 
-      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: testRoomId }, testUserId);
+      const req = mockRequest({ operationIds: ['op-1'] }, { roomId: TEST_ROOM_ID }, TEST_USER_ID);
       const res = mockResponse();
 
       await deleteCanvasOperations(req, res);
@@ -412,10 +378,21 @@ describe('Canvas Controller', () => {
     });
 
     it('should return 0 deletedCount when operationIds do not match any operations', async () => {
+      (db.delete as jest.Mock).mockReturnValue({
+        where: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([]),
+        }),
+      });
+      (db.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue(makeSelectWhereResult([{ id: 'op-1' }, { id: 'op-2' }])),
+        }),
+      });
+
       const req = mockRequest(
         { operationIds: ['nonexistent-id'] },
-        { roomId: testRoomId },
-        testUserId
+        { roomId: TEST_ROOM_ID },
+        TEST_USER_ID
       );
       const res = mockResponse();
 

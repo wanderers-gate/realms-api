@@ -1,91 +1,94 @@
-import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from '@jest/globals';
+import { beforeEach, describe, expect, it } from '@jest/globals';
 
-jest.mock('../../db', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { drizzle } = require('drizzle-orm/better-sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { migrate } = require('drizzle-orm/better-sqlite3/migrator');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const schema = require('../../db/schema');
-  const sqlite = new Database(':memory:');
-  sqlite.pragma('foreign_keys = ON');
-  const db = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder: path.join(__dirname, '../../../drizzle') });
-  return { db };
-});
+const TEST_ROOM_ID = 'room-id-chat-svc-001';
+const TEST_USER_ID = 'user-id-chat-svc-001';
+
+jest.mock('../../db', () => ({
+  db: {
+    query: {
+      chatMessages: { findFirst: jest.fn() },
+    },
+    insert: jest.fn(),
+    select: jest.fn(),
+  },
+}));
 
 import { db } from '../../db';
-import { chatMessages, rooms, users } from '../../db/schema';
 import { chatService } from '../chat.service';
 
-let testRoomId: string;
-
-// Insert messages with explicit staggered timestamps so ordering is deterministic
-// (timestamp mode stores seconds — messages within the same second are unordered)
-const insertMessage = (message: string, secondsOffset: number) =>
-  db
-    .insert(chatMessages)
-    .values({
-      roomId: testRoomId,
-      userId: 'user1',
-      username: 'User1',
-      message,
-      timestamp: new Date(Date.now() + secondsOffset * 1000),
-    })
-    .returning()
-    .then(([m]) => m);
-
-beforeEach(async () => {
-  const [user] = await db
-    .insert(users)
-    .values({
-      email: 'test@example.com',
-      password: 'hashed',
-      firstName: 'Test',
-      lastName: 'User',
-    })
-    .returning();
-
-  const [room] = await db
-    .insert(rooms)
-    .values({
-      name: 'Test Room',
-      slug: 'test-room',
-      roomCode: 'TST001',
-      createdById: user.id,
-    })
-    .returning();
-
-  testRoomId = room.id;
+const makeMessage = (
+  id: string,
+  message: string,
+  secondsOffset: number,
+  extra: Record<string, unknown> = {}
+) => ({
+  id,
+  roomId: TEST_ROOM_ID,
+  userId: TEST_USER_ID,
+  username: 'TestUser',
+  message,
+  diceRoll: null,
+  timestamp: new Date(Date.now() + secondsOffset * 1000),
+  ...extra,
 });
 
-afterEach(async () => {
-  await db.delete(chatMessages);
-  await db.delete(rooms);
-  await db.delete(users);
+// select chain: from().where().orderBy().limit()
+const makeSelectChain = (data: unknown[]) => ({
+  from: jest.fn().mockReturnValue({
+    where: jest.fn().mockReturnValue({
+      orderBy: jest.fn().mockReturnValue({
+        limit: jest.fn().mockResolvedValue(data),
+      }),
+    }),
+  }),
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+
+  (db.insert as jest.Mock).mockReturnValue({
+    values: jest.fn().mockReturnValue({
+      returning: jest.fn().mockResolvedValue([makeMessage('new-msg-id', 'Hello!', 0)]),
+    }),
+  });
+
+  (db.select as jest.Mock).mockReturnValue(makeSelectChain([]));
+  (db.query.chatMessages.findFirst as jest.Mock).mockResolvedValue(null);
 });
 
 describe('Chat Service', () => {
   describe('saveMessage', () => {
     it('should save a message and return it', async () => {
-      const msg = await chatService.saveMessage(testRoomId, 'user-123', 'TestUser', 'Hello!');
+      const saved = makeMessage('msg-id', 'Hello!', 0);
+      (db.insert as jest.Mock).mockReturnValue({
+        values: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([saved]),
+        }),
+      });
 
-      expect(msg.roomId).toBe(testRoomId);
-      expect(msg.userId).toBe('user-123');
+      const msg = await chatService.saveMessage(TEST_ROOM_ID, TEST_USER_ID, 'TestUser', 'Hello!');
+
+      expect(msg.roomId).toBe(TEST_ROOM_ID);
+      expect(msg.userId).toBe(TEST_USER_ID);
       expect(msg.username).toBe('TestUser');
       expect(msg.message).toBe('Hello!');
       expect(msg.timestamp).toBeInstanceOf(Date);
       expect(msg.id).toBeDefined();
+      expect(db.insert).toHaveBeenCalled();
     });
 
     it('should save a message with a dice roll', async () => {
       const diceRoll = { notation: '1d6', groups: [], modifier: 0, total: 4 };
+      const saved = makeMessage('msg-id', '/roll 1d6', 0, { diceRoll });
+      (db.insert as jest.Mock).mockReturnValue({
+        values: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([saved]),
+        }),
+      });
+
       const msg = await chatService.saveMessage(
-        testRoomId,
-        'user-123',
+        TEST_ROOM_ID,
+        TEST_USER_ID,
         'TestUser',
         '/roll 1d6',
         diceRoll
@@ -96,14 +99,12 @@ describe('Chat Service', () => {
   });
 
   describe('getRecentMessages', () => {
-    beforeEach(async () => {
-      for (let i = 1; i <= 5; i++) {
-        await insertMessage(`Message ${i}`, i);
-      }
-    });
-
     it('should return messages in chronological order', async () => {
-      const messages = await chatService.getRecentMessages(testRoomId, 10);
+      // Service selects DESC then reverses — mock returns DESC, service reverses to ASC
+      const msgsDesc = [5, 4, 3, 2, 1].map((i) => makeMessage(`msg-${i}`, `Message ${i}`, i));
+      (db.select as jest.Mock).mockReturnValue(makeSelectChain(msgsDesc));
+
+      const messages = await chatService.getRecentMessages(TEST_ROOM_ID, 10);
 
       expect(messages).toHaveLength(5);
       expect(messages[0].message).toBe('Message 1');
@@ -111,7 +112,11 @@ describe('Chat Service', () => {
     });
 
     it('should respect the limit and return the most recent', async () => {
-      const messages = await chatService.getRecentMessages(testRoomId, 3);
+      // With limit 3, DB returns the 3 most recent (DESC): msg5, msg4, msg3
+      const msgsDesc = [5, 4, 3].map((i) => makeMessage(`msg-${i}`, `Message ${i}`, i));
+      (db.select as jest.Mock).mockReturnValue(makeSelectChain(msgsDesc));
+
+      const messages = await chatService.getRecentMessages(TEST_ROOM_ID, 3);
 
       expect(messages).toHaveLength(3);
       expect(messages[0].message).toBe('Message 3');
@@ -126,13 +131,17 @@ describe('Chat Service', () => {
 
   describe('getMessagesBefore', () => {
     it('should return messages before the given message id', async () => {
-      const msgs = [];
-      for (let i = 1; i <= 5; i++) {
-        msgs.push(await insertMessage(`Message ${i}`, i));
-      }
+      const refMsg = makeMessage('ref-msg', 'Message 3', 3);
+      (db.query.chatMessages.findFirst as jest.Mock).mockResolvedValue(refMsg);
 
-      // beforeId = msgs[2] (Message 3) → should return Messages 1 and 2
-      const older = await chatService.getMessagesBefore(testRoomId, msgs[2].id, 10);
+      // Service queries DESC by timestamp then reverses — mock returns [msg2, msg1] in DESC
+      const olderDesc = [
+        makeMessage('msg-2', 'Message 2', 2),
+        makeMessage('msg-1', 'Message 1', 1),
+      ];
+      (db.select as jest.Mock).mockReturnValue(makeSelectChain(olderDesc));
+
+      const older = await chatService.getMessagesBefore(TEST_ROOM_ID, 'ref-msg', 10);
 
       expect(older).toHaveLength(2);
       expect(older[0].message).toBe('Message 1');
@@ -140,7 +149,9 @@ describe('Chat Service', () => {
     });
 
     it('should return empty array for unknown beforeId', async () => {
-      const result = await chatService.getMessagesBefore(testRoomId, 'nonexistent-id', 10);
+      (db.query.chatMessages.findFirst as jest.Mock).mockResolvedValue(null);
+
+      const result = await chatService.getMessagesBefore(TEST_ROOM_ID, 'nonexistent-id', 10);
       expect(result).toHaveLength(0);
     });
   });

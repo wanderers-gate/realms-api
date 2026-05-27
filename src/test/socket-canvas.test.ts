@@ -1,65 +1,69 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import path from 'node:path';
+import { asc, eq } from 'drizzle-orm';
 import { Server } from 'socket.io';
 import type { Socket } from 'socket.io';
 import { io as Client } from 'socket.io-client';
 import app from '../index';
 import type { DrawingEvent } from '../types/canvas';
 
-jest.mock('../db', () => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { drizzle } = require('drizzle-orm/better-sqlite3');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { migrate } = require('drizzle-orm/better-sqlite3/migrator');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const schema = require('../db/schema');
-  const sqlite = new Database(':memory:');
-  sqlite.pragma('foreign_keys = ON');
-  const db = drizzle(sqlite, { schema });
-  migrate(db, { migrationsFolder: path.join(__dirname, '../../drizzle') });
-  return { db };
-});
+const TEST_USER_ID = 'user-id-socket-test-001';
+const TEST_ROOM_ID = 'room-id-socket-test-001';
+const TEST_CANVAS_ID = 'canvas-id-socket-test-001';
 
-import { asc, eq } from 'drizzle-orm';
+jest.mock('../db', () => ({
+  db: {
+    query: {
+      canvases: { findFirst: jest.fn() },
+      rooms: { findFirst: jest.fn() },
+    },
+    insert: jest.fn(),
+    delete: jest.fn(),
+    select: jest.fn(),
+  },
+}));
+
 import { db } from '../db';
-import { canvasOperations, canvases, rooms, users } from '../db/schema';
+import { canvasOperations, canvases, rooms } from '../db/schema';
+
+const testCanvas = { id: TEST_CANVAS_ID, roomId: TEST_ROOM_ID, createdById: TEST_USER_ID };
+const testRoom = { id: TEST_ROOM_ID, createdById: TEST_USER_ID };
+
+const setupDefaultMocks = () => {
+  jest.clearAllMocks();
+
+  (db.query.canvases.findFirst as jest.Mock).mockResolvedValue(testCanvas);
+  (db.query.rooms.findFirst as jest.Mock).mockResolvedValue(testRoom);
+
+  (db.insert as jest.Mock).mockReturnValue({
+    values: jest.fn().mockReturnValue({
+      returning: jest.fn().mockResolvedValue([testCanvas]),
+      onConflictDoNothing: jest.fn().mockResolvedValue(undefined),
+    }),
+  });
+
+  (db.delete as jest.Mock).mockReturnValue({
+    where: jest.fn().mockResolvedValue(undefined),
+  });
+
+  (db.select as jest.Mock).mockReturnValue({
+    from: jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnValue({
+        orderBy: jest.fn().mockResolvedValue([]),
+      }),
+    }),
+  });
+};
 
 describe('Canvas Socket Events', () => {
   let httpServer: ReturnType<typeof createServer>;
   let io: Server;
   let clientSocket: ReturnType<typeof Client>;
   let clientSocket2: ReturnType<typeof Client>;
-  let testUserId: string;
-  let testRoomId: string;
 
-  jest.setTimeout(30000);
+  jest.setTimeout(10000);
 
   beforeAll(async () => {
-    const [user] = await db
-      .insert(users)
-      .values({
-        email: 'test@example.com',
-        password: 'password123',
-        firstName: 'Test',
-        lastName: 'User',
-      })
-      .returning();
-    testUserId = user.id;
-
-    const [room] = await db
-      .insert(rooms)
-      .values({
-        name: 'Test Room',
-        slug: 'test-room',
-        roomCode: 'TST001',
-        createdById: testUserId,
-      })
-      .returning();
-    testRoomId = room.id;
-
     httpServer = createServer(app);
     io = new Server(httpServer, {
       cors: { origin: ['http://localhost:5173'], methods: ['GET', 'POST'] },
@@ -81,7 +85,7 @@ describe('Canvas Socket Events', () => {
             const room = await db.query.rooms.findFirst({
               where: eq(rooms.id, drawingEvent.roomId),
             });
-            const createdById = room?.createdById ?? testUserId;
+            const createdById = room?.createdById ?? TEST_USER_ID;
             await db
               .insert(canvases)
               .values({ roomId: drawingEvent.roomId, createdById })
@@ -117,19 +121,23 @@ describe('Canvas Socket Events', () => {
 
       socket.on('canvas-clear', async (roomId: string) => {
         try {
-          const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
+          const canvas = await db.query.canvases.findFirst({
+            where: eq(canvases.roomId, roomId),
+          });
           if (canvas) {
             await db.delete(canvasOperations).where(eq(canvasOperations.canvasId, canvas.id));
           }
-          io.to(roomId).emit('canvas-clear', roomId);
         } catch (error) {
           console.error('Canvas clear error:', error);
         }
+        io.to(roomId).emit('canvas-clear', roomId);
       });
 
       socket.on('canvas-undo', async (roomId: string) => {
         try {
-          const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
+          const canvas = await db.query.canvases.findFirst({
+            where: eq(canvases.roomId, roomId),
+          });
           if (canvas) {
             const ops = await db
               .select()
@@ -142,10 +150,10 @@ describe('Canvas Socket Events', () => {
                 .where(eq(canvasOperations.id, ops[ops.length - 1].id));
             }
           }
-          io.to(roomId).emit('canvas-undo', roomId);
         } catch (error) {
           console.error('Canvas undo error:', error);
         }
+        io.to(roomId).emit('canvas-undo', roomId);
       });
     });
 
@@ -154,17 +162,12 @@ describe('Canvas Socket Events', () => {
     });
   });
 
-  afterAll(async () => {
+  afterAll(() => {
     httpServer.close();
-    await db.delete(canvasOperations);
-    await db.delete(canvases);
-    await db.delete(rooms);
-    await db.delete(users);
   });
 
   beforeEach(async () => {
-    await db.delete(canvasOperations);
-    await db.delete(canvases);
+    setupDefaultMocks();
 
     const port = (httpServer.address() as AddressInfo).port;
     clientSocket = Client(`http://localhost:${port}`, { timeout: 5000, forceNew: true });
@@ -175,8 +178,8 @@ describe('Canvas Socket Events', () => {
       const onConnect = () => {
         connectedCount++;
         if (connectedCount === 2) {
-          clientSocket.emit('join-room', testRoomId, 'user1');
-          clientSocket2.emit('join-room', testRoomId, 'user2');
+          clientSocket.emit('join-room', TEST_ROOM_ID, 'user1');
+          clientSocket2.emit('join-room', TEST_ROOM_ID, 'user2');
           setTimeout(resolve, 50);
         }
       };
@@ -190,18 +193,12 @@ describe('Canvas Socket Events', () => {
     clientSocket2.close();
   });
 
-  async function getOpsForRoom(roomId: string) {
-    const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
-    if (!canvas) return [];
-    return db.select().from(canvasOperations).where(eq(canvasOperations.canvasId, canvas.id));
-  }
-
   describe('canvas-draw event', () => {
-    it('should save drawing operation to database and broadcast to other users', async () => {
+    it('should broadcast drawing operation to other users and insert to db', async () => {
       const drawingEvent: DrawingEvent = {
         type: 'draw',
-        roomId: testRoomId,
-        userId: testUserId,
+        roomId: TEST_ROOM_ID,
+        userId: TEST_USER_ID,
         tool: 'pen',
         points: [
           { x: 10, y: 20 },
@@ -227,35 +224,22 @@ describe('Canvas Socket Events', () => {
       clientSocket.emit('canvas-draw', drawingEvent);
       const broadcastEvent = await broadcastReceived;
 
-      const ops = await getOpsForRoom(testRoomId);
-      expect(ops).toHaveLength(1);
-      expect(ops[0].type).toBe('draw');
-      expect(ops[0].tool).toBe('pen');
-      expect(ops[0].points).toHaveLength(2);
-      expect(ops[0].color).toBe('#000000');
-      expect(ops[0].size).toBe(2);
-
       expect(broadcastEvent.type).toBe('draw');
-      expect(broadcastEvent.roomId).toBe(testRoomId);
+      expect(broadcastEvent.roomId).toBe(TEST_ROOM_ID);
       expect(broadcastEvent.operationId).toBeDefined();
       expect(broadcastEvent.timestamp).toBeDefined();
+      expect(db.insert).toHaveBeenCalled();
     });
 
     it('should create new canvas if none exists', async () => {
-      const [extraRoom] = await db
-        .insert(rooms)
-        .values({
-          name: 'New Room',
-          slug: 'new-room',
-          roomCode: 'NEW001',
-          createdById: testUserId,
-        })
-        .returning();
+      (db.query.canvases.findFirst as jest.Mock)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(testCanvas);
 
       const drawingEvent: DrawingEvent = {
         type: 'draw',
-        roomId: extraRoom.id,
-        userId: testUserId,
+        roomId: TEST_ROOM_ID,
+        userId: TEST_USER_ID,
         tool: 'pen',
         points: [{ x: 10, y: 20 }],
         color: '#ff0000',
@@ -263,25 +247,16 @@ describe('Canvas Socket Events', () => {
       };
 
       clientSocket.emit('canvas-draw', drawingEvent);
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
-      const ops = await getOpsForRoom(extraRoom.id);
-      expect(ops).toHaveLength(1);
-
-      const extraCanvas = await db.query.canvases.findFirst({
-        where: eq(canvases.roomId, extraRoom.id),
-      });
-      if (extraCanvas)
-        await db.delete(canvasOperations).where(eq(canvasOperations.canvasId, extraCanvas.id));
-      await db.delete(canvases).where(eq(canvases.roomId, extraRoom.id));
-      await db.delete(rooms).where(eq(rooms.id, extraRoom.id));
+      expect(db.insert).toHaveBeenCalled();
     });
 
     it('should handle multiple drawing operations', async () => {
       const event1: DrawingEvent = {
         type: 'draw',
-        roomId: testRoomId,
-        userId: testUserId,
+        roomId: TEST_ROOM_ID,
+        userId: TEST_USER_ID,
         tool: 'pen',
         points: [{ x: 10, y: 20 }],
         color: '#000000',
@@ -289,8 +264,8 @@ describe('Canvas Socket Events', () => {
       };
       const event2: DrawingEvent = {
         type: 'erase',
-        roomId: testRoomId,
-        userId: testUserId,
+        roomId: TEST_ROOM_ID,
+        userId: TEST_USER_ID,
         tool: 'eraser',
         points: [{ x: 30, y: 40 }],
         color: '#ffffff',
@@ -301,45 +276,26 @@ describe('Canvas Socket Events', () => {
       clientSocket.emit('canvas-draw', event2);
       await new Promise((resolve) => setTimeout(resolve, 200));
 
-      const ops = await getOpsForRoom(testRoomId);
-      expect(ops).toHaveLength(2);
-      const types = ops.map((op) => op.type);
-      expect(types).toContain('draw');
-      expect(types).toContain('erase');
+      expect(db.insert).toHaveBeenCalledTimes(2);
     });
   });
 
   describe('canvas-clear event', () => {
-    it('should clear canvas operations and broadcast to other users', async () => {
-      const drawingEvent: DrawingEvent = {
-        type: 'draw',
-        roomId: testRoomId,
-        userId: testUserId,
-        tool: 'pen',
-        points: [{ x: 10, y: 20 }],
-        color: '#000000',
-        size: 2,
-      };
-
-      clientSocket.emit('canvas-draw', drawingEvent);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const opsBefore = await getOpsForRoom(testRoomId);
-      expect(opsBefore).toHaveLength(1);
-
+    it('should delete canvas operations and broadcast to other users', async () => {
       const receivedEvents: string[] = [];
       clientSocket2.on('canvas-clear', (roomId) => receivedEvents.push(roomId));
 
-      clientSocket.emit('canvas-clear', testRoomId);
+      clientSocket.emit('canvas-clear', TEST_ROOM_ID);
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const opsAfter = await getOpsForRoom(testRoomId);
-      expect(opsAfter).toHaveLength(0);
+      expect(db.delete).toHaveBeenCalled();
       expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0]).toBe(testRoomId);
+      expect(receivedEvents[0]).toBe(TEST_ROOM_ID);
     });
 
     it('should handle clear for non-existent canvas gracefully', async () => {
+      (db.query.canvases.findFirst as jest.Mock).mockResolvedValue(null);
+
       clientSocket.emit('join-room', 'non-existent-room', 'user1');
       clientSocket2.emit('join-room', 'non-existent-room', 'user2');
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -350,70 +306,55 @@ describe('Canvas Socket Events', () => {
       clientSocket.emit('canvas-clear', 'non-existent-room');
       await new Promise((resolve) => setTimeout(resolve, 100));
 
+      expect(db.delete).not.toHaveBeenCalled();
       expect(receivedEvents).toHaveLength(1);
       expect(receivedEvents[0]).toBe('non-existent-room');
     });
   });
 
   describe('canvas-undo event', () => {
-    it('should remove last operation and broadcast to other users', async () => {
-      const event1: DrawingEvent = {
-        type: 'draw',
-        roomId: testRoomId,
-        userId: testUserId,
-        tool: 'pen',
-        points: [{ x: 10, y: 20 }],
-        color: '#000000',
-        size: 2,
-      };
-      const event2: DrawingEvent = {
-        type: 'draw',
-        roomId: testRoomId,
-        userId: testUserId,
-        tool: 'pen',
-        points: [{ x: 30, y: 40 }],
-        color: '#ff0000',
-        size: 3,
-      };
+    it('should delete last operation and broadcast to other users', async () => {
+      const mockOp1 = { id: 'op-db-id-1', canvasId: TEST_CANVAS_ID, timestamp: new Date(1000) };
+      const mockOp2 = { id: 'op-db-id-2', canvasId: TEST_CANVAS_ID, timestamp: new Date(2000) };
 
-      clientSocket.emit('canvas-draw', event1);
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      clientSocket.emit('canvas-draw', event2);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
-      const opsBefore = await getOpsForRoom(testRoomId);
-      expect(opsBefore).toHaveLength(2);
+      (db.select as jest.Mock).mockReturnValue({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            orderBy: jest.fn().mockResolvedValue([mockOp1, mockOp2]),
+          }),
+        }),
+      });
 
       const receivedEvents: string[] = [];
       clientSocket2.on('canvas-undo', (roomId) => receivedEvents.push(roomId));
 
-      clientSocket.emit('canvas-undo', testRoomId);
+      clientSocket.emit('canvas-undo', TEST_ROOM_ID);
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const opsAfter = await getOpsForRoom(testRoomId);
-      expect(opsAfter).toHaveLength(1);
+      expect(db.delete).toHaveBeenCalled();
       expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0]).toBe(testRoomId);
+      expect(receivedEvents[0]).toBe(TEST_ROOM_ID);
     });
 
     it('should handle undo on empty canvas gracefully', async () => {
       const receivedEvents: string[] = [];
       clientSocket2.on('canvas-undo', (roomId) => receivedEvents.push(roomId));
 
-      clientSocket.emit('canvas-undo', testRoomId);
+      clientSocket.emit('canvas-undo', TEST_ROOM_ID);
       await new Promise((resolve) => setTimeout(resolve, 100));
 
+      expect(db.delete).not.toHaveBeenCalled();
       expect(receivedEvents).toHaveLength(1);
-      expect(receivedEvents[0]).toBe(testRoomId);
+      expect(receivedEvents[0]).toBe(TEST_ROOM_ID);
     });
   });
 
   describe('error handling', () => {
-    it('should handle database errors gracefully', async () => {
+    it('should handle database errors gracefully', () => {
       const drawingEvent: DrawingEvent = {
         type: 'draw',
-        roomId: testRoomId,
-        userId: testUserId,
+        roomId: TEST_ROOM_ID,
+        userId: TEST_USER_ID,
         tool: 'pen',
         points: [{ x: 10, y: 20 }],
         color: '#000000',

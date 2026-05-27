@@ -49,6 +49,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
       height: number;
       color: string;
       label: string;
+      imageUrl?: string;
     }) => {
       try {
         const ownerId = socket.authenticatedUserId || socket.id;
@@ -63,6 +64,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           height: data.height,
           color: data.color,
           label: data.label,
+          imageUrl: data.imageUrl ?? null,
           ownerId,
           ownerIds: [ownerId],
           visible: true,
@@ -77,6 +79,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           height: data.height,
           color: data.color,
           label: data.label,
+          imageUrl: data.imageUrl,
           ownerId,
           ownerIds: [ownerId],
           visible: true,

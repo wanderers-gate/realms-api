@@ -38,6 +38,7 @@
     "express": "^4.21.2",
     "jsonapi-serializer": "^3.6.9",
     "jsonwebtoken": "^9.0.2",
+    "multer": "^2.1.1",
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0"
   },
@@ -52,6 +53,7 @@
     "@types/jest": "^29.5.12",
     "@types/jsonapi-serializer": "^3.6.8",
     "@types/jsonwebtoken": "^9.0.9",
+    "@types/multer": "^2.1.0",
     "@types/node": "^20.17.46",
     "drizzle-kit": "^0.31.10",
     "esbuild": "^0.25.4",
