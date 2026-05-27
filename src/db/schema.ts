@@ -107,6 +107,28 @@ export const canvasOperations = sqliteTable('canvas_operations', {
   timestamp: integer('timestamp', { mode: 'timestamp' }).notNull(),
 });
 
+export const players = sqliteTable('players', {
+  id: id(),
+  username: text('username').notNull().unique(),
+  passwordHash: text('password_hash'),
+  ...timestamps(),
+});
+
+export const roomPlayers = sqliteTable(
+  'room_players',
+  {
+    id: id(),
+    roomId: text('room_id')
+      .notNull()
+      .references(() => rooms.id),
+    playerId: text('player_id')
+      .notNull()
+      .references(() => players.id),
+    joinedAt: integer('joined_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  },
+  (table) => [unique('uq_room_player').on(table.roomId, table.playerId)]
+);
+
 export const tokens = sqliteTable('tokens', {
   id: id(),
   tokenId: text('token_id').notNull().unique(),
