@@ -1,9 +1,17 @@
 import * as argon2 from 'argon2';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import { db } from '../db';
-import { players, roomPlayers } from '../db/schema';
+import { players, roomPlayers, rooms } from '../db/schema';
 import logger from '../utils/logger';
+
+const resolveRoomId = async (roomIdOrCode: string): Promise<string | null> => {
+  const room = await db.query.rooms.findFirst({
+    where: or(eq(rooms.id, roomIdOrCode), eq(rooms.roomCode, roomIdOrCode.toUpperCase())),
+    columns: { id: true },
+  });
+  return room?.id ?? null;
+};
 
 export const getPlayers = async (_req: Request, res: Response): Promise<void> => {
   try {
@@ -21,7 +29,12 @@ export const getPlayers = async (_req: Request, res: Response): Promise<void> =>
 
 export const getRoomPlayers = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { roomId } = req.params;
+    const { roomId: roomIdOrCode } = req.params;
+    const roomId = await resolveRoomId(roomIdOrCode);
+    if (!roomId) {
+      res.status(404).json({ error: 'Room not found' });
+      return;
+    }
     const rows = await db
       .select({ id: players.id, username: players.username, hasPassword: players.passwordHash })
       .from(roomPlayers)
@@ -105,9 +118,17 @@ export const verifyPlayerPassword = async (req: Request, res: Response): Promise
 
 export const joinRoom = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { roomId, playerId } = req.params;
+    const { roomId: roomIdOrCode, playerId } = req.params;
 
-    const player = await db.query.players.findFirst({ where: eq(players.id, playerId) });
+    const [roomId, player] = await Promise.all([
+      resolveRoomId(roomIdOrCode),
+      db.query.players.findFirst({ where: eq(players.id, playerId) }),
+    ]);
+
+    if (!roomId) {
+      res.status(404).json({ error: 'Room not found' });
+      return;
+    }
     if (!player) {
       res.status(404).json({ error: 'Player not found' });
       return;
