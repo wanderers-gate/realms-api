@@ -56,9 +56,13 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
       imageOffsetX?: number;
       imageOffsetY?: number;
       imageScale?: number;
+      ownerIds?: string[];
+      visible?: boolean;
     }) => {
       try {
         const ownerId = socket.authenticatedUserId || socket.id;
+        const ownerIds = data.ownerIds?.length ? data.ownerIds : [ownerId];
+        const visible = data.visible ?? true;
         const tokenId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
         await db.insert(tokens).values({
@@ -75,8 +79,8 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           imageOffsetY: data.imageOffsetY ?? 0,
           imageScale: data.imageScale ?? 1,
           ownerId,
-          ownerIds: [ownerId],
-          visible: true,
+          ownerIds,
+          visible,
         });
 
         const token: Token = {
@@ -93,8 +97,8 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           imageOffsetY: data.imageOffsetY ?? 0,
           imageScale: data.imageScale ?? 1,
           ownerId,
-          ownerIds: [ownerId],
-          visible: true,
+          ownerIds,
+          visible,
         };
 
         io.to(data.roomId).emit('token-added', token);
