@@ -24,6 +24,9 @@ function rowToToken(row: typeof tokens.$inferSelect): Token {
     ownerId: row.ownerId,
     ownerIds: (row.ownerIds as string[]) ?? [row.ownerId],
     imageUrl: row.imageUrl ?? undefined,
+    imageOffsetX: row.imageOffsetX,
+    imageOffsetY: row.imageOffsetY,
+    imageScale: row.imageScale,
     visible: row.visible,
   };
 }
@@ -50,9 +53,16 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
       color: string;
       label: string;
       imageUrl?: string;
+      imageOffsetX?: number;
+      imageOffsetY?: number;
+      imageScale?: number;
+      ownerIds?: string[];
+      visible?: boolean;
     }) => {
       try {
         const ownerId = socket.authenticatedUserId || socket.id;
+        const ownerIds = data.ownerIds?.length ? data.ownerIds : [ownerId];
+        const visible = data.visible ?? true;
         const tokenId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
         await db.insert(tokens).values({
@@ -65,9 +75,12 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           color: data.color,
           label: data.label,
           imageUrl: data.imageUrl ?? null,
+          imageOffsetX: data.imageOffsetX ?? 0,
+          imageOffsetY: data.imageOffsetY ?? 0,
+          imageScale: data.imageScale ?? 1,
           ownerId,
-          ownerIds: [ownerId],
-          visible: true,
+          ownerIds,
+          visible,
         });
 
         const token: Token = {
@@ -80,9 +93,12 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           color: data.color,
           label: data.label,
           imageUrl: data.imageUrl,
+          imageOffsetX: data.imageOffsetX ?? 0,
+          imageOffsetY: data.imageOffsetY ?? 0,
+          imageScale: data.imageScale ?? 1,
           ownerId,
-          ownerIds: [ownerId],
-          visible: true,
+          ownerIds,
+          visible,
         };
 
         io.to(data.roomId).emit('token-added', token);
@@ -196,7 +212,16 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
 
   socket.on(
     'token-edit',
-    async (data: { roomId: string; tokenId: string; color: string; label: string }) => {
+    async (data: {
+      roomId: string;
+      tokenId: string;
+      color: string;
+      label: string;
+      imageUrl?: string;
+      imageOffsetX?: number;
+      imageOffsetY?: number;
+      imageScale?: number;
+    }) => {
       try {
         const requesterId = socket.authenticatedUserId || socket.id;
         const token = await db.query.tokens.findFirst({
@@ -213,12 +238,23 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
 
         await db
           .update(tokens)
-          .set({ color: data.color, label: data.label })
+          .set({
+            color: data.color,
+            label: data.label,
+            imageUrl: data.imageUrl ?? null,
+            imageOffsetX: data.imageOffsetX ?? 0,
+            imageOffsetY: data.imageOffsetY ?? 0,
+            imageScale: data.imageScale ?? 1,
+          })
           .where(eq(tokens.tokenId, data.tokenId));
         io.to(data.roomId).emit('token-edited', {
           tokenId: data.tokenId,
           color: data.color,
           label: data.label,
+          imageUrl: data.imageUrl,
+          imageOffsetX: data.imageOffsetX ?? 0,
+          imageOffsetY: data.imageOffsetY ?? 0,
+          imageScale: data.imageScale ?? 1,
         });
         logger.info(`[TOKEN] Edited token ${data.tokenId}`);
       } catch (error) {

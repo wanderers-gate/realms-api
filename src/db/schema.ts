@@ -124,6 +124,9 @@ export const tokens = sqliteTable('tokens', {
     .notNull()
     .$defaultFn(() => []),
   imageUrl: text('image_url'),
+  imageOffsetX: real('image_offset_x').notNull().default(0),
+  imageOffsetY: real('image_offset_y').notNull().default(0),
+  imageScale: real('image_scale').notNull().default(1),
   visible: integer('visible', { mode: 'boolean' }).notNull().default(true),
   ...timestamps(),
 });

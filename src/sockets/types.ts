@@ -14,6 +14,9 @@ export interface Token {
   ownerId: string;
   ownerIds: string[];
   imageUrl?: string;
+  imageOffsetX?: number;
+  imageOffsetY?: number;
+  imageScale?: number;
   visible: boolean;
 }
 
