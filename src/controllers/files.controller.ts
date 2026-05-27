@@ -31,11 +31,10 @@ const isSafePath = (p: unknown): p is string => {
 const assetsDir = (slug: string) => path.join(config.dataDir, 'rooms', slug, 'assets');
 
 const resolveDir = (slug: string, folderPath: string): string => {
-  const base = assetsDir(slug);
+  const base = path.join(config.dataDir, 'rooms', slug);
   if (!folderPath) return base;
   const resolved = path.join(base, ...folderPath.split('/'));
-  // Defense in depth: ensure we haven't escaped the data directory
-  if (!resolved.startsWith(config.dataDir)) throw new Error('Path traversal detected');
+  if (!resolved.startsWith(base)) throw new Error('Path traversal detected');
   return resolved;
 };
 
@@ -119,7 +118,7 @@ export const listFiles = async (req: Request, res: Response): Promise<void> => {
         const stat = fs.statSync(path.join(dir, e.name));
         return {
           name: e.name,
-          url: `rooms/${room.slug}/assets/${folderPath ? `${folderPath}/` : ''}${e.name}`,
+          url: `rooms/${room.slug}/${folderPath ? `${folderPath}/` : ''}${e.name}`,
           size: stat.size,
           createdAt: stat.birthtime.toISOString(),
         };
@@ -182,7 +181,7 @@ export const uploadFile = async (req: Request, res: Response): Promise<void> => 
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, filename), file.buffer);
 
-    const url = `rooms/${room.slug}/assets/${folderPath ? `${folderPath}/` : ''}${filename}`;
+    const url = `rooms/${room.slug}/${folderPath ? `${folderPath}/` : ''}${filename}`;
     res.status(201).json({ data: { url, name: filename, path: folderPath } });
   } catch (error) {
     logger.error('Error uploading file:', error);
@@ -243,11 +242,10 @@ export const deleteFile = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    const base = assetsDir(room.slug);
+    const base = path.join(config.dataDir, 'rooms', room.slug);
     const dir = resolveDir(room.slug, folderPath as string);
     const filePath = path.join(dir, filename);
 
-    // Reject any path that escapes the assets directory
     if (!filePath.startsWith(base + path.sep)) {
       res.status(400).json({
         errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid file path' }],

@@ -90,9 +90,7 @@ const makeCountChain = (total: number) => ({
 const makeSingleRoomChain = (result: any[]) => ({
   from: jest.fn().mockReturnValue({
     leftJoin: jest.fn().mockReturnValue({
-      where: jest.fn(
-        
-      ).mockReturnValue({
+      where: jest.fn().mockReturnValue({
         limit: (jest.fn() as jest.Mock<() => Promise<unknown>>).mockResolvedValue(result),
       }),
     }),
