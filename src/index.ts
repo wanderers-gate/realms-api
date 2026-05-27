@@ -8,6 +8,7 @@ import authProtectedRouter from './routes/authProtectedRouter';
 import authRouter from './routes/authRouter';
 import canvasRouter from './routes/canvasRouter';
 import filesRouter from './routes/filesRouter';
+import playerRouter from './routes/playerRouter';
 import roomRouter from './routes/roomRouter';
 import userRouter from './routes/userRouter';
 import logger from './utils/logger';
@@ -49,6 +50,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/rooms', roomRouter);
 app.use('/api/canvas', canvasRouter);
 app.use('/api/files', filesRouter);
+app.use('/api/players', playerRouter);
 
 app.use(authenticate);
 app.use('/api/auth', authProtectedRouter);
