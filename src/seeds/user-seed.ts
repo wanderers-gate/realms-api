@@ -3,20 +3,8 @@ import { db } from '../db';
 import { users } from '../db/schema';
 
 const userSeeds = [
-  {
-    username: 'admin',
-    email: 'admin@realms.com',
-    password: 'admin123',
-    firstName: 'Admin',
-    lastName: 'User',
-  },
-  {
-    username: 'user',
-    email: 'user@realms.com',
-    password: 'user123',
-    firstName: 'Regular',
-    lastName: 'User',
-  },
+  { username: 'admin', password: 'admin123', displayName: 'Admin' },
+  { username: 'user', password: 'user123', displayName: 'User' },
 ];
 
 export const seedUsers = async (): Promise<void> => {

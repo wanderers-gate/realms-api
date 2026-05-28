@@ -9,14 +9,14 @@ import logger from '../utils/logger';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { username, email, password, firstName, lastName, displayName } = req.body;
+    const { username, password, displayName } = req.body;
 
-    if (!username || !password || !firstName || !lastName) {
+    if (!username || !password) {
       res.jsonApiError(400, [
         {
           status: '400',
           title: 'Bad Request',
-          detail: 'Username, password, firstName, and lastName are required',
+          detail: 'Username and password are required',
         },
       ]);
       return;
@@ -54,10 +54,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       .insert(users)
       .values({
         username: username.toLowerCase(),
-        email: email ? email.toLowerCase() : null,
         password: hashedPassword,
-        firstName,
-        lastName,
         displayName: displayName ? displayName.trim() : null,
       })
       .returning();
@@ -159,10 +156,8 @@ export const getCurrentUser = async (req: Request, res: Response): Promise<void>
 
     res.status(200).json({
       id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      displayName: user.displayName || `${user.firstName} ${user.lastName}`,
+      username: user.username,
+      displayName: user.displayName || user.username,
     });
   } catch (error) {
     logger.error('[GET CURRENT USER] Error:', error);

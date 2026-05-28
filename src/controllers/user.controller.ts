@@ -37,7 +37,7 @@ export const show = async (req: Request, res: Response): Promise<void> => {
 export const create = async (req: Request, res: Response): Promise<void> => {
   try {
     const userData = deserializeUser(req.body);
-    if (!userData.username || !userData.password || !userData.firstName || !userData.lastName) {
+    if (!userData.username || !userData.password) {
       res.jsonApiError(400, [
         { status: '400', title: 'Bad Request', detail: 'Missing required fields' },
       ]);
@@ -55,10 +55,7 @@ export const create = async (req: Request, res: Response): Promise<void> => {
       .insert(users)
       .values({
         username: (userData.username as string).toLowerCase(),
-        email: userData.email ? (userData.email as string).toLowerCase() : null,
         password: hashedPassword,
-        firstName: userData.firstName as string,
-        lastName: userData.lastName as string,
         displayName: (userData.displayName as string) ?? null,
       })
       .returning();

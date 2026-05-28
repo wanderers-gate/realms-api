@@ -6,11 +6,8 @@ describe('User Serializer', () => {
   const mockUser: User = {
     id: 'user-uuid-123',
     username: 'johndoe',
-    email: 'test@example.com',
-    firstName: 'John',
-    lastName: 'Doe',
     password: 'hashed_password',
-    displayName: null,
+    displayName: 'John Doe',
     tokenVersion: 0,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
@@ -25,9 +22,7 @@ describe('User Serializer', () => {
           id: mockUser.id,
           type: 'user',
           attributes: {
-            email: mockUser.email,
-            firstName: mockUser.firstName,
-            lastName: mockUser.lastName,
+            username: mockUser.username,
             displayName: mockUser.displayName,
             createdAt: mockUser.createdAt,
             updatedAt: mockUser.updatedAt,
@@ -39,7 +34,7 @@ describe('User Serializer', () => {
     it('should serialize an array of users', () => {
       const mockUsers: User[] = [
         mockUser,
-        { ...mockUser, id: 'user-uuid-456', email: 'test2@example.com' },
+        { ...mockUser, id: 'user-uuid-456', username: 'janedoe' },
       ];
 
       const result = serializeUser(mockUsers);
@@ -50,9 +45,7 @@ describe('User Serializer', () => {
             id: mockUsers[0].id,
             type: 'user',
             attributes: {
-              email: mockUsers[0].email,
-              firstName: mockUsers[0].firstName,
-              lastName: mockUsers[0].lastName,
+              username: mockUsers[0].username,
               displayName: mockUsers[0].displayName,
               createdAt: mockUsers[0].createdAt,
               updatedAt: mockUsers[0].updatedAt,
@@ -62,9 +55,7 @@ describe('User Serializer', () => {
             id: mockUsers[1].id,
             type: 'user',
             attributes: {
-              email: mockUsers[1].email,
-              firstName: mockUsers[1].firstName,
-              lastName: mockUsers[1].lastName,
+              username: mockUsers[1].username,
               displayName: mockUsers[1].displayName,
               createdAt: mockUsers[1].createdAt,
               updatedAt: mockUsers[1].updatedAt,
@@ -87,18 +78,16 @@ describe('User Serializer', () => {
         id: mockUser.id,
         type: 'user',
         attributes: {
-          email: mockUser.email,
-          firstName: mockUser.firstName,
-          lastName: mockUser.lastName,
+          username: mockUser.username,
+          displayName: mockUser.displayName,
         },
       };
 
       const result = deserializeUser(resource);
 
       expect(result).toEqual({
-        email: mockUser.email,
-        firstName: mockUser.firstName,
-        lastName: mockUser.lastName,
+        username: mockUser.username,
+        displayName: mockUser.displayName,
       });
     });
 
@@ -117,11 +106,11 @@ describe('User Serializer', () => {
       const resource: JsonApiResourceObject = {
         id: mockUser.id,
         type: 'user',
-        attributes: { email: mockUser.email, unknownField: 'value' },
+        attributes: { username: mockUser.username, unknownField: 'value' },
       };
 
       const result = deserializeUser(resource);
-      expect(result).toEqual({ email: mockUser.email });
+      expect(result).toEqual({ username: mockUser.username });
       expect(result).not.toHaveProperty('unknownField');
     });
   });

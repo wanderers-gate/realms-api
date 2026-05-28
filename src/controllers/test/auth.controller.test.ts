@@ -51,10 +51,7 @@ const createMockResponse = () =>
 const mockUserRecord: User = {
   id: 'user-uuid-123',
   username: 'testuser',
-  email: 'test@example.com',
   password: 'hashed-password',
-  firstName: 'Test',
-  lastName: 'User',
   displayName: null,
   tokenVersion: 0,
   createdAt: new Date(),
@@ -200,19 +197,17 @@ describe('Auth Controller', () => {
       expect(res.status).toHaveBeenCalledWith(200);
       expect(res.json).toHaveBeenCalledWith({
         id: 'user-uuid-123',
-        email: 'test@example.com',
-        firstName: 'Test',
-        lastName: 'User',
+        username: 'testuser',
         displayName: 'Test User',
       });
     });
 
-    it('should fall back to firstName + lastName when displayName is null', async () => {
+    it('should fall back to username when displayName is null', async () => {
       const req = { user: mockUserRecord } as unknown as Request;
 
       await getCurrentUser(req, res);
 
-      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'Test User' }));
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ displayName: 'testuser' }));
     });
 
     it('should return 401 when no user on request', async () => {

@@ -2,14 +2,7 @@ import type { User } from '../types/express';
 import type { JsonApiResourceObject, JsonApiResponse } from '../types/json-api';
 
 const type = 'user';
-const attributes = [
-  'email',
-  'firstName',
-  'lastName',
-  'displayName',
-  'createdAt',
-  'updatedAt',
-] as const;
+const attributes = ['username', 'displayName', 'createdAt', 'updatedAt'] as const;
 
 export const serializeUser = (data: User | User[]): JsonApiResponse => {
   const resources = Array.isArray(data)

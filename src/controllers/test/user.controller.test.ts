@@ -46,10 +46,7 @@ const createMockResponse = () =>
 const mockUser: User = {
   id: 'user-uuid-123',
   username: 'testuser',
-  email: 'test@example.com',
   password: 'hashed-password',
-  firstName: 'Test',
-  lastName: 'User',
   displayName: null,
   tokenVersion: 0,
   createdAt: new Date(),
@@ -57,7 +54,7 @@ const mockUser: User = {
 };
 
 const mockSerializedUser: JsonApiResponse = {
-  data: { id: 'user-uuid-123', type: 'user', attributes: { email: 'test@example.com' } },
+  data: { id: 'user-uuid-123', type: 'user', attributes: { username: 'testuser' } },
 };
 
 const dbSelect = () => db.select as unknown as jest.Mock<() => SelectChain>;
@@ -75,9 +72,7 @@ describe('User Controller', () => {
     res = createMockResponse();
     jest.mocked(serializeUser).mockReturnValue(mockSerializedUser);
     jest.mocked(deserializeUser).mockReturnValue({
-      email: 'test@example.com',
-      firstName: 'Test',
-      lastName: 'User',
+      username: 'testuser',
     });
 
     dbSelect().mockImplementation(() => ({
@@ -147,10 +142,7 @@ describe('User Controller', () => {
     it('should create a new user', async () => {
       jest.mocked(deserializeUser).mockReturnValue({
         username: 'newuser',
-        email: 'new@example.com',
         password: 'plaintext',
-        firstName: 'New',
-        lastName: 'User',
       });
       jest.mocked(argon2.hash).mockResolvedValue('hashed-password');
       const req = { body: {} } as Request;
@@ -163,7 +155,7 @@ describe('User Controller', () => {
     });
 
     it('should return 400 if required fields are missing', async () => {
-      jest.mocked(deserializeUser).mockReturnValue({ email: 'only@example.com' });
+      jest.mocked(deserializeUser).mockReturnValue({});
       const req = { body: {} } as Request;
 
       await create(req, res);

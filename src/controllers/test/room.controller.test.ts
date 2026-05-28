@@ -29,9 +29,7 @@ import { createRoom, deleteRoom, getRoom, getRooms, updateRoom } from '../room.c
 
 const mockUser = {
   id: TEST_USER_ID,
-  email: 'test@example.com',
-  firstName: 'Test',
-  lastName: 'User',
+  username: 'testuser',
   displayName: 'Test User',
   tokenVersion: 0,
   createdAt: new Date(),
@@ -361,7 +359,7 @@ describe('Room Controller', () => {
         expect.arrayContaining([
           expect.objectContaining({
             type: 'user',
-            attributes: expect.objectContaining({ firstName: 'Test', lastName: 'User' }),
+            attributes: expect.objectContaining({ username: 'testuser', displayName: 'Test User' }),
           }),
         ])
       );

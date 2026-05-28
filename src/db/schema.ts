@@ -16,10 +16,7 @@ const timestamps = () => ({
 export const users = sqliteTable('users', {
   id: id(),
   username: text('username').notNull().unique(),
-  email: text('email').unique(),
   password: text('password').notNull(),
-  firstName: text('first_name').notNull(),
-  lastName: text('last_name').notNull(),
   displayName: text('display_name'),
   tokenVersion: integer('token_version').notNull().default(0),
   ...timestamps(),

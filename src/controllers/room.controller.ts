@@ -13,8 +13,7 @@ import logger from '../utils/logger';
 
 type CreatorInfo = {
   id: string;
-  firstName: string;
-  lastName: string;
+  username: string;
   displayName: string | null;
 };
 
@@ -24,8 +23,7 @@ const serializeRoomWithCreator = (room: Room, creator: CreatorInfo) =>
       id: creator.id,
       type: 'user',
       attributes: {
-        firstName: creator.firstName,
-        lastName: creator.lastName,
+        username: creator.username,
         displayName: creator.displayName,
       },
     },
@@ -158,8 +156,7 @@ export const getRooms = async (req: Request, res: Response) => {
           id: creator.id,
           type: 'user',
           attributes: {
-            firstName: creator.firstName,
-            lastName: creator.lastName,
+            username: creator.username,
             displayName: creator.displayName,
           },
         };
