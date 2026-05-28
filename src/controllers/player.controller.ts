@@ -2,7 +2,7 @@ import * as argon2 from 'argon2';
 import { and, eq, or } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import { db } from '../db';
-import { players, roomPlayers, rooms } from '../db/schema';
+import { roomPlayers, rooms, users } from '../db/schema';
 import logger from '../utils/logger';
 
 const resolveRoomId = async (roomIdOrCode: string): Promise<string | null> => {
@@ -16,9 +16,10 @@ const resolveRoomId = async (roomIdOrCode: string): Promise<string | null> => {
 export const getPlayers = async (_req: Request, res: Response): Promise<void> => {
   try {
     const rows = await db
-      .select({ id: players.id, username: players.username, hasPassword: players.passwordHash })
-      .from(players)
-      .orderBy(players.username);
+      .select({ id: users.id, username: users.username, hasPassword: users.password })
+      .from(users)
+      .where(eq(users.role, 'player'))
+      .orderBy(users.username);
 
     res.json(rows.map((p) => ({ id: p.id, username: p.username, hasPassword: !!p.hasPassword })));
   } catch (error) {
@@ -36,11 +37,11 @@ export const getRoomPlayers = async (req: Request, res: Response): Promise<void>
       return;
     }
     const rows = await db
-      .select({ id: players.id, username: players.username, hasPassword: players.passwordHash })
+      .select({ id: users.id, username: users.username, hasPassword: users.password })
       .from(roomPlayers)
-      .innerJoin(players, eq(roomPlayers.playerId, players.id))
-      .where(eq(roomPlayers.roomId, roomId))
-      .orderBy(players.username);
+      .innerJoin(users, eq(roomPlayers.userId, users.id))
+      .where(and(eq(roomPlayers.roomId, roomId), eq(users.role, 'player')))
+      .orderBy(users.username);
 
     res.json(rows.map((p) => ({ id: p.id, username: p.username, hasPassword: !!p.hasPassword })));
   } catch (error) {
@@ -58,27 +59,23 @@ export const createPlayer = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const existing = await db.query.players.findFirst({
-      where: eq(players.username, username.trim()),
+    const existing = await db.query.users.findFirst({
+      where: eq(users.username, username.trim()),
     });
     if (existing) {
       res.status(409).json({ error: 'Username already taken' });
       return;
     }
 
-    const passwordHash = password ? await argon2.hash(password) : null;
+    const hashedPassword = password ? await argon2.hash(password) : null;
     const [player] = await db
-      .insert(players)
-      .values({ username: username.trim(), passwordHash })
-      .returning({
-        id: players.id,
-        username: players.username,
-        passwordHash: players.passwordHash,
-      });
+      .insert(users)
+      .values({ username: username.trim(), password: hashedPassword, role: 'player' })
+      .returning({ id: users.id, username: users.username, password: users.password });
 
     res
       .status(201)
-      .json({ id: player.id, username: player.username, hasPassword: !!player.passwordHash });
+      .json({ id: player.id, username: player.username, hasPassword: !!player.password });
   } catch (error) {
     logger.error('Error creating player:', error);
     res.status(500).json({ error: 'Failed to create player' });
@@ -94,16 +91,16 @@ export const verifyPlayerPassword = async (req: Request, res: Response): Promise
       return;
     }
 
-    const player = await db.query.players.findFirst({
-      where: eq(players.id, playerId),
+    const player = await db.query.users.findFirst({
+      where: and(eq(users.id, playerId), eq(users.role, 'player')),
     });
 
-    if (!player || !player.passwordHash) {
+    if (!player || !player.password) {
       res.status(404).json({ error: 'Player not found or has no password' });
       return;
     }
 
-    const valid = await argon2.verify(player.passwordHash, password);
+    const valid = await argon2.verify(player.password, password);
     if (!valid) {
       res.status(401).json({ error: 'Incorrect password' });
       return;
@@ -122,7 +119,7 @@ export const joinRoom = async (req: Request, res: Response): Promise<void> => {
 
     const [roomId, player] = await Promise.all([
       resolveRoomId(roomIdOrCode),
-      db.query.players.findFirst({ where: eq(players.id, playerId) }),
+      db.query.users.findFirst({ where: and(eq(users.id, playerId), eq(users.role, 'player')) }),
     ]);
 
     if (!roomId) {
@@ -135,11 +132,11 @@ export const joinRoom = async (req: Request, res: Response): Promise<void> => {
     }
 
     const existing = await db.query.roomPlayers.findFirst({
-      where: and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.playerId, playerId)),
+      where: and(eq(roomPlayers.roomId, roomId), eq(roomPlayers.userId, playerId)),
     });
 
     if (!existing) {
-      await db.insert(roomPlayers).values({ roomId, playerId });
+      await db.insert(roomPlayers).values({ roomId, userId: playerId });
     }
 
     res.json({ id: player.id, username: player.username });

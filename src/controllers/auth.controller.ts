@@ -56,6 +56,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         username: username.toLowerCase(),
         password: hashedPassword,
         displayName: displayName ? displayName.trim() : null,
+        role: 'gm',
       })
       .returning();
 
@@ -93,7 +94,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const user = await db.query.users.findFirst({
       where: eq(users.username, username.toLowerCase()),
     });
-    if (!user) {
+    if (!user || user.role !== 'gm' || !user.password) {
       logger.error('[LOGIN] Failed - user not found', { username });
       res.jsonApiError(401, [
         { status: '401', title: 'Unauthorized', detail: 'Invalid credentials' },

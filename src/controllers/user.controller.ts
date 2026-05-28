@@ -57,6 +57,7 @@ export const create = async (req: Request, res: Response): Promise<void> => {
         username: (userData.username as string).toLowerCase(),
         password: hashedPassword,
         displayName: (userData.displayName as string) ?? null,
+        role: 'gm',
       })
       .returning();
 

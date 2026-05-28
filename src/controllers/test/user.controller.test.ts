@@ -48,6 +48,7 @@ const mockUser: User = {
   username: 'testuser',
   password: 'hashed-password',
   displayName: null,
+  role: 'gm',
   tokenVersion: 0,
   createdAt: new Date(),
   updatedAt: new Date(),

@@ -16,8 +16,9 @@ const timestamps = () => ({
 export const users = sqliteTable('users', {
   id: id(),
   username: text('username').notNull().unique(),
-  password: text('password').notNull(),
+  password: text('password'),
   displayName: text('display_name'),
+  role: text('role').notNull().default('gm'),
   tokenVersion: integer('token_version').notNull().default(0),
   ...timestamps(),
 });
@@ -105,13 +106,6 @@ export const canvasOperations = sqliteTable('canvas_operations', {
   timestamp: integer('timestamp', { mode: 'timestamp' }).notNull(),
 });
 
-export const players = sqliteTable('players', {
-  id: id(),
-  username: text('username').notNull().unique(),
-  passwordHash: text('password_hash'),
-  ...timestamps(),
-});
-
 export const roomPlayers = sqliteTable(
   'room_players',
   {
@@ -119,12 +113,12 @@ export const roomPlayers = sqliteTable(
     roomId: text('room_id')
       .notNull()
       .references(() => rooms.id),
-    playerId: text('player_id')
+    userId: text('user_id')
       .notNull()
-      .references(() => players.id),
+      .references(() => users.id),
     joinedAt: integer('joined_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   },
-  (table) => [unique('uq_room_player').on(table.roomId, table.playerId)]
+  (table) => [unique('uq_room_player').on(table.roomId, table.userId)]
 );
 
 export const tokens = sqliteTable('tokens', {

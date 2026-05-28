@@ -3,8 +3,8 @@ import { db } from '../db';
 import { users } from '../db/schema';
 
 const userSeeds = [
-  { username: 'admin', password: 'admin123', displayName: 'Admin' },
-  { username: 'user', password: 'user123', displayName: 'User' },
+  { username: 'admin', password: 'admin123', displayName: 'Admin', role: 'gm' },
+  { username: 'user', password: 'user123', displayName: 'User', role: 'gm' },
 ];
 
 export const seedUsers = async (): Promise<void> => {

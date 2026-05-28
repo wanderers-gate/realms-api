@@ -8,6 +8,7 @@ describe('User Serializer', () => {
     username: 'johndoe',
     password: 'hashed_password',
     displayName: 'John Doe',
+    role: 'gm',
     tokenVersion: 0,
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
@@ -24,6 +25,7 @@ describe('User Serializer', () => {
           attributes: {
             username: mockUser.username,
             displayName: mockUser.displayName,
+            role: mockUser.role,
             createdAt: mockUser.createdAt,
             updatedAt: mockUser.updatedAt,
           },
@@ -47,6 +49,7 @@ describe('User Serializer', () => {
             attributes: {
               username: mockUsers[0].username,
               displayName: mockUsers[0].displayName,
+              role: mockUsers[0].role,
               createdAt: mockUsers[0].createdAt,
               updatedAt: mockUsers[0].updatedAt,
             },
@@ -57,6 +60,7 @@ describe('User Serializer', () => {
             attributes: {
               username: mockUsers[1].username,
               displayName: mockUsers[1].displayName,
+              role: mockUsers[1].role,
               createdAt: mockUsers[1].createdAt,
               updatedAt: mockUsers[1].updatedAt,
             },

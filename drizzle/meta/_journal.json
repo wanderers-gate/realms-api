@@ -43,6 +43,13 @@
       "when": 1779930114000,
       "tag": "0005_user_remove_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1779931761000,
+      "tag": "0006_users_role_consolidate",
+      "breakpoints": true
     }
   ]
 }
