@@ -5,6 +5,7 @@ import { deserializeUser, serializeUser } from '../user.serializer';
 describe('User Serializer', () => {
   const mockUser: User = {
     id: 'user-uuid-123',
+    username: 'johndoe',
     email: 'test@example.com',
     firstName: 'John',
     lastName: 'Doe',

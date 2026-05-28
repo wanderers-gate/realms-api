@@ -45,6 +45,7 @@ const createMockResponse = () =>
 
 const mockUser: User = {
   id: 'user-uuid-123',
+  username: 'testuser',
   email: 'test@example.com',
   password: 'hashed-password',
   firstName: 'Test',
@@ -145,6 +146,7 @@ describe('User Controller', () => {
   describe('create', () => {
     it('should create a new user', async () => {
       jest.mocked(deserializeUser).mockReturnValue({
+        username: 'newuser',
         email: 'new@example.com',
         password: 'plaintext',
         firstName: 'New',

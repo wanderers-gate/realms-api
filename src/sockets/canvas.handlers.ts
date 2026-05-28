@@ -35,9 +35,9 @@ async function getOrCreateCanvas(roomId: string) {
 
 async function getRoomPermissions(roomId: string, authenticatedUserId: string | undefined) {
   const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
-  if (!room) return { isDM: false, hasModifyPermission: false };
+  if (!room) return { isGM: false, hasModifyPermission: false };
 
-  const isDM = !!authenticatedUserId && room.createdById === authenticatedUserId;
+  const isGM = !!authenticatedUserId && room.createdById === authenticatedUserId;
 
   const permission = authenticatedUserId
     ? await db.query.userPermissions.findFirst({
@@ -48,7 +48,7 @@ async function getRoomPermissions(roomId: string, authenticatedUserId: string | 
       })
     : undefined;
 
-  return { isDM, hasModifyPermission: permission?.canModifyDrawings ?? false };
+  return { isGM, hasModifyPermission: permission?.canModifyDrawings ?? false };
 }
 
 export async function savePendingOperations(roomId: string): Promise<void> {
@@ -188,7 +188,7 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
       await savePendingOperations(data.roomId);
 
       const requesterUserId = socket.authenticatedUserId || socket.id;
-      const { isDM, hasModifyPermission } = await getRoomPermissions(
+      const { isGM, hasModifyPermission } = await getRoomPermissions(
         data.roomId,
         socket.authenticatedUserId
       );
@@ -207,7 +207,7 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
         );
 
       const allowed = opsToDelete.filter(
-        (op) => isDM || hasModifyPermission || op.userId === requesterUserId
+        (op) => isGM || hasModifyPermission || op.userId === requesterUserId
       );
       if (allowed.length === 0) return;
 
@@ -236,7 +236,7 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
         await savePendingOperations(data.roomId);
 
         const requesterUserId = socket.authenticatedUserId || socket.id;
-        const { isDM, hasModifyPermission } = await getRoomPermissions(
+        const { isGM, hasModifyPermission } = await getRoomPermissions(
           data.roomId,
           socket.authenticatedUserId
         );
@@ -254,7 +254,7 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
         });
         if (!op) return;
 
-        if (!isDM && !hasModifyPermission && op.userId !== requesterUserId) return;
+        if (!isGM && !hasModifyPermission && op.userId !== requesterUserId) return;
 
         const newPoints = (op.points as Point[]).map((p) => ({
           x: p.x + data.dx,
@@ -275,8 +275,8 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
 
   socket.on('canvas-scale', async (data: { roomId: string; scaleX: number; scaleY: number }) => {
     try {
-      const { isDM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
-      if (!isDM) return;
+      const { isGM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
+      if (!isGM) return;
 
       await savePendingOperations(data.roomId);
 
@@ -324,8 +324,8 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
 
   socket.on('grid-settings-update', async (data: { roomId: string; gridSettings: unknown }) => {
     try {
-      const { isDM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
-      if (!isDM) return;
+      const { isGM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
+      if (!isGM) return;
       socket.to(data.roomId).emit('grid-settings-update', data);
     } catch (error) {
       logger.error(`[GRID] Error broadcasting grid settings for room ${data.roomId}:`, error);
@@ -334,8 +334,8 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
 
   socket.on('map-update', async (data: { roomId: string; mapUrl: string | null }) => {
     try {
-      const { isDM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
-      if (!isDM) return;
+      const { isGM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
+      if (!isGM) return;
       _io.to(data.roomId).emit('map-update', data);
     } catch (error) {
       logger.error(`[CANVAS] Error broadcasting map update for room ${data.roomId}:`, error);

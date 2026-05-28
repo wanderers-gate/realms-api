@@ -50,6 +50,7 @@ const createMockResponse = () =>
 
 const mockUserRecord: User = {
   id: 'user-uuid-123',
+  username: 'testuser',
   email: 'test@example.com',
   password: 'hashed-password',
   firstName: 'Test',
@@ -90,7 +91,7 @@ describe('Auth Controller', () => {
   describe('register', () => {
     const req = {
       body: {
-        email: 'test@example.com',
+        username: 'testuser',
         password: 'password',
         firstName: 'Test',
         lastName: 'User',
@@ -114,7 +115,7 @@ describe('Auth Controller', () => {
       await register(req, res);
 
       expect(res.jsonApiError).toHaveBeenCalledWith(400, [
-        expect.objectContaining({ detail: 'User already exists' }),
+        expect.objectContaining({ detail: 'Username already taken' }),
       ]);
     });
 
@@ -131,7 +132,7 @@ describe('Auth Controller', () => {
 
   describe('login', () => {
     const req = {
-      body: { email: 'test@example.com', password: 'password' },
+      body: { username: 'testuser', password: 'password' },
     } as Request;
 
     it('should login and set cookie', async () => {

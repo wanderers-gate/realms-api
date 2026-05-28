@@ -5,7 +5,7 @@ import { rooms, tokens } from '../db/schema';
 import logger from '../utils/logger';
 import type { Token } from './types';
 
-async function isDM(roomId: string, authenticatedUserId: string | undefined): Promise<boolean> {
+async function isGM(roomId: string, authenticatedUserId: string | undefined): Promise<boolean> {
   if (!authenticatedUserId) return false;
   const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
   return room?.createdById === authenticatedUserId;
@@ -121,7 +121,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
 
         const ownerIds = (token.ownerIds as string[]) ?? [token.ownerId];
         if (
-          !(await isDM(data.roomId, socket.authenticatedUserId)) &&
+          !(await isGM(data.roomId, socket.authenticatedUserId)) &&
           !ownerIds.includes(requesterId)
         )
           return;
@@ -149,7 +149,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
 
         const ownerIds = (token.ownerIds as string[]) ?? [token.ownerId];
         if (
-          !(await isDM(data.roomId, socket.authenticatedUserId)) &&
+          !(await isGM(data.roomId, socket.authenticatedUserId)) &&
           !ownerIds.includes(requesterId)
         )
           return;
@@ -199,7 +199,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
       if (!token) return;
 
       const ownerIds = (token.ownerIds as string[]) ?? [token.ownerId];
-      if (!(await isDM(data.roomId, socket.authenticatedUserId)) && !ownerIds.includes(requesterId))
+      if (!(await isGM(data.roomId, socket.authenticatedUserId)) && !ownerIds.includes(requesterId))
         return;
 
       await db.delete(tokens).where(eq(tokens.tokenId, data.tokenId));
@@ -231,7 +231,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
 
         const ownerIds = (token.ownerIds as string[]) ?? [token.ownerId];
         if (
-          !(await isDM(data.roomId, socket.authenticatedUserId)) &&
+          !(await isGM(data.roomId, socket.authenticatedUserId)) &&
           !ownerIds.includes(requesterId)
         )
           return;
@@ -267,7 +267,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
     'token-assign-owners',
     async (data: { roomId: string; tokenId: string; ownerIds: string[] }) => {
       try {
-        if (!(await isDM(data.roomId, socket.authenticatedUserId))) return;
+        if (!(await isGM(data.roomId, socket.authenticatedUserId))) return;
         await db
           .update(tokens)
           .set({ ownerIds: data.ownerIds })
@@ -287,7 +287,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
     'token-toggle-visibility',
     async (data: { roomId: string; tokenId: string; visible: boolean }) => {
       try {
-        if (!(await isDM(data.roomId, socket.authenticatedUserId))) return;
+        if (!(await isGM(data.roomId, socket.authenticatedUserId))) return;
         await db
           .update(tokens)
           .set({ visible: data.visible })

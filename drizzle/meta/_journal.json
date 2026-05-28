@@ -29,6 +29,13 @@
       "when": 1779866172000,
       "tag": "0003_players",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1779927705000,
+      "tag": "0004_user_username",
+      "breakpoints": true
     }
   ]
 }

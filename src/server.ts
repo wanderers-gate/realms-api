@@ -135,8 +135,8 @@ io.on('connection', (socket: Socket) => {
         const room = await db.query.rooms.findFirst({ where: eq(roomsTable.id, data.roomId) });
         if (!room) return;
 
-        const isDM = socket.authenticatedUserId && room.createdById === socket.authenticatedUserId;
-        if (!isDM) {
+        const isGM = socket.authenticatedUserId && room.createdById === socket.authenticatedUserId;
+        if (!isGM) {
           logger.warn(`[PERMISSIONS] Unauthorized permission change attempt by ${socket.id}`);
           return;
         }

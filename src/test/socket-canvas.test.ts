@@ -70,9 +70,10 @@ describe('Canvas Socket Events', () => {
     });
 
     io.on('connection', (socket: Socket) => {
-      socket.on('join-room', (roomId: string, username: string) => {
+      socket.on('join-room', (roomId: string, username: string, callback?: () => void) => {
         socket.join(roomId);
         (socket as Socket & { username?: string }).username = username;
+        callback?.();
       });
 
       socket.on('canvas-draw', async (drawingEvent: DrawingEvent) => {
@@ -174,13 +175,17 @@ describe('Canvas Socket Events', () => {
     clientSocket2 = Client(`http://localhost:${port}`, { timeout: 5000, forceNew: true });
 
     await new Promise<void>((resolve) => {
+      let joinedCount = 0;
+      const onJoined = () => {
+        joinedCount++;
+        if (joinedCount === 2) resolve();
+      };
       let connectedCount = 0;
       const onConnect = () => {
         connectedCount++;
         if (connectedCount === 2) {
-          clientSocket.emit('join-room', TEST_ROOM_ID, 'user1');
-          clientSocket2.emit('join-room', TEST_ROOM_ID, 'user2');
-          setTimeout(resolve, 50);
+          clientSocket.emit('join-room', TEST_ROOM_ID, 'user1', onJoined);
+          clientSocket2.emit('join-room', TEST_ROOM_ID, 'user2', onJoined);
         }
       };
       clientSocket.on('connect', onConnect);
@@ -296,9 +301,14 @@ describe('Canvas Socket Events', () => {
     it('should handle clear for non-existent canvas gracefully', async () => {
       (db.query.canvases.findFirst as jest.Mock).mockResolvedValue(null);
 
-      clientSocket.emit('join-room', 'non-existent-room', 'user1');
-      clientSocket2.emit('join-room', 'non-existent-room', 'user2');
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await new Promise<void>((resolve) => {
+        let joinedCount = 0;
+        const onJoined = () => {
+          if (++joinedCount === 2) resolve();
+        };
+        clientSocket.emit('join-room', 'non-existent-room', 'user1', onJoined);
+        clientSocket2.emit('join-room', 'non-existent-room', 'user2', onJoined);
+      });
 
       const receivedEvents: string[] = [];
       clientSocket2.on('canvas-clear', (roomId) => receivedEvents.push(roomId));

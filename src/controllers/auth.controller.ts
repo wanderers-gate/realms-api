@@ -9,14 +9,14 @@ import logger from '../utils/logger';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, firstName, lastName, displayName } = req.body;
+    const { username, email, password, firstName, lastName, displayName } = req.body;
 
-    if (!email || !password || !firstName || !lastName) {
+    if (!username || !password || !firstName || !lastName) {
       res.jsonApiError(400, [
         {
           status: '400',
           title: 'Bad Request',
-          detail: 'Email, password, firstName, and lastName are required',
+          detail: 'Username, password, firstName, and lastName are required',
         },
       ]);
       return;
@@ -34,11 +34,11 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     const existing = await db.query.users.findFirst({
-      where: eq(users.email, email.toLowerCase()),
+      where: eq(users.username, username.toLowerCase()),
     });
     if (existing) {
       res.jsonApiError(400, [
-        { status: '400', title: 'Bad Request', detail: 'User already exists' },
+        { status: '400', title: 'Bad Request', detail: 'Username already taken' },
       ]);
       return;
     }
@@ -53,7 +53,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     const [user] = await db
       .insert(users)
       .values({
-        email: email.toLowerCase(),
+        username: username.toLowerCase(),
+        email: email ? email.toLowerCase() : null,
         password: hashedPassword,
         firstName,
         lastName,
@@ -83,18 +84,20 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const { username, password } = req.body;
 
-    if (!email || !password) {
+    if (!username || !password) {
       res.jsonApiError(400, [
-        { status: '400', title: 'Bad Request', detail: 'Email and password are required' },
+        { status: '400', title: 'Bad Request', detail: 'Username and password are required' },
       ]);
       return;
     }
 
-    const user = await db.query.users.findFirst({ where: eq(users.email, email.toLowerCase()) });
+    const user = await db.query.users.findFirst({
+      where: eq(users.username, username.toLowerCase()),
+    });
     if (!user) {
-      logger.error('[LOGIN] Failed - user not found', { email });
+      logger.error('[LOGIN] Failed - user not found', { username });
       res.jsonApiError(401, [
         { status: '401', title: 'Unauthorized', detail: 'Invalid credentials' },
       ]);
@@ -103,7 +106,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     const isValid = await argon2.verify(user.password, password);
     if (!isValid) {
-      logger.error('[LOGIN] Failed - invalid password', { email });
+      logger.error('[LOGIN] Failed - invalid password', { username });
       res.jsonApiError(401, [
         { status: '401', title: 'Unauthorized', detail: 'Invalid credentials' },
       ]);
@@ -121,7 +124,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       maxAge: 3600000,
     });
 
-    logger.info('[LOGIN] Success', { email });
+    logger.info('[LOGIN] Success', { username });
     res.status(200).send();
   } catch (error) {
     logger.error('[LOGIN] Error:', error);
