@@ -7,6 +7,7 @@ export type Room = InferSelectModel<typeof rooms>;
 type RoomInput = {
   name?: string;
   description?: string;
+  roomCode?: string;
   maxPlayers?: number;
   settings?: {
     isPrivate?: boolean;
@@ -75,6 +76,7 @@ export const deserializeRoom = (resource: JsonApiResourceObject): RoomInput => {
 
   if (data.name !== undefined) result.name = data.name as string;
   if (data.description !== undefined) result.description = data.description as string;
+  if (data.roomCode !== undefined) result.roomCode = data.roomCode as string;
   if (data.maxPlayers !== undefined) result.maxPlayers = data.maxPlayers as number;
   if (data.settings !== undefined) result.settings = data.settings as RoomInput['settings'];
 
