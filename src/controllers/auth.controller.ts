@@ -65,7 +65,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'strict',
-      maxAge: 3600000,
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     res.status(201).json(serializeUser(user));
@@ -119,7 +119,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-      maxAge: 3600000,
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
     logger.info('[LOGIN] Success', { username });
