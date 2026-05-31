@@ -3,7 +3,15 @@ import { and, eq, or } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import { db } from '../db';
 import { roomPlayers, rooms, users } from '../db/schema';
+import { generateToken } from '../utils/jwt';
 import logger from '../utils/logger';
+
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict' as const,
+  maxAge: 30 * 24 * 60 * 60 * 1000,
+};
 
 const resolveRoomId = async (roomIdOrCode: string): Promise<string | null> => {
   const room = await db.query.rooms.findFirst({
@@ -71,7 +79,10 @@ export const createPlayer = async (req: Request, res: Response): Promise<void> =
     const [player] = await db
       .insert(users)
       .values({ username: username.trim(), password: hashedPassword, role: 'player' })
-      .returning({ id: users.id, username: users.username, password: users.password });
+      .returning({ id: users.id, username: users.username, password: users.password, tokenVersion: users.tokenVersion });
+
+    const token = generateToken(player.id, player.tokenVersion);
+    res.cookie('token', token, COOKIE_OPTIONS);
 
     res
       .status(201)
@@ -106,6 +117,9 @@ export const verifyPlayerPassword = async (req: Request, res: Response): Promise
       return;
     }
 
+    const token = generateToken(player.id, player.tokenVersion);
+    res.cookie('token', token, COOKIE_OPTIONS);
+
     res.json({ id: player.id, username: player.username });
   } catch (error) {
     logger.error('Error verifying player password:', error);
@@ -138,6 +152,9 @@ export const joinRoom = async (req: Request, res: Response): Promise<void> => {
     if (!existing) {
       await db.insert(roomPlayers).values({ roomId, userId: playerId });
     }
+
+    const token = generateToken(player.id, player.tokenVersion);
+    res.cookie('token', token, COOKIE_OPTIONS);
 
     res.json({ id: player.id, username: player.username });
   } catch (error) {
