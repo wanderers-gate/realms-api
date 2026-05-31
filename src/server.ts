@@ -84,6 +84,11 @@ io.on('connection', (socket: Socket) => {
       joinedAt: new Date(),
     });
 
+    db.update(roomsTable)
+      .set({ currentPlayers: room.users.size, lastActivity: new Date() })
+      .where(eq(roomsTable.id, roomId))
+      .catch((err) => logger.error(`[ROOM] Failed to update player count for ${roomId}:`, err));
+
     logger.info(`User ${username} (${socket.id}) joined room: ${roomId}`);
 
     try {
@@ -174,6 +179,10 @@ io.on('connection', (socket: Socket) => {
       const room = rooms.get(roomId);
       if (room) {
         room.users.delete(socket.id);
+        db.update(roomsTable)
+          .set({ currentPlayers: room.users.size })
+          .where(eq(roomsTable.id, roomId))
+          .catch((err) => logger.error(`[ROOM] Failed to update player count for ${roomId}:`, err));
         if (room.users.size === 0) {
           rooms.delete(roomId);
           logger.info(`Room ${roomId} deleted (empty)`);
@@ -197,6 +206,7 @@ io.on('connection', (socket: Socket) => {
 
 const startServer = async (): Promise<void> => {
   runMigrations();
+  await db.update(roomsTable).set({ currentPlayers: 0 }).where(eq(roomsTable.isActive, true));
   server = httpServer.listen(config.port, () => {
     logger.info(`Server is running on port ${config.port}`);
     logger.info('Socket.IO server initialized');

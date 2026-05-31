@@ -73,7 +73,13 @@ export const createRoom = async (req: Request, res: Response) => {
       });
     }
 
-    const { name, description, maxPlayers, settings } = deserializeRoom(req.body);
+    const {
+      name,
+      description,
+      maxPlayers,
+      settings,
+      roomCode: requestedCode,
+    } = deserializeRoom(req.body);
     if (!name) {
       return res.status(400).json({
         errors: [{ status: '400', title: 'Bad Request', detail: 'Room name is required' }],
@@ -89,7 +95,32 @@ export const createRoom = async (req: Request, res: Response) => {
       });
     }
 
-    const [slug, roomCode] = await Promise.all([generateUniqueSlug(name), generateRoomCode()]);
+    if (requestedCode) {
+      if (!/^[A-Z0-9]{4,10}$/i.test(requestedCode)) {
+        return res.status(400).json({
+          errors: [
+            {
+              status: '400',
+              title: 'Bad Request',
+              detail: 'Room code must be 4–10 letters and numbers only',
+            },
+          ],
+        });
+      }
+      const takenCode = await db.query.rooms.findFirst({
+        where: eq(rooms.roomCode, requestedCode.toUpperCase()),
+      });
+      if (takenCode) {
+        return res.status(409).json({
+          errors: [{ status: '409', title: 'Conflict', detail: 'That room code is already taken' }],
+        });
+      }
+    }
+
+    const [slug, roomCode] = await Promise.all([
+      generateUniqueSlug(name),
+      requestedCode ? Promise.resolve(requestedCode.toUpperCase()) : generateRoomCode(),
+    ]);
 
     const [room] = await db
       .insert(rooms)

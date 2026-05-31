@@ -10,7 +10,7 @@ interface TokenPayload extends JwtPayload {
 export const generateToken = (userId: string, tokenVersion: number): string => {
   const secret = config.jwtSecret;
   if (!secret) throw new Error('JWT_SECRET is not defined');
-  return jwt.sign({ userId, tokenVersion }, secret, { expiresIn: '1h' });
+  return jwt.sign({ userId, tokenVersion }, secret, { expiresIn: '30d' });
 };
 
 export function getTokenFromHeaders(req: Request): string | null {

@@ -273,54 +273,67 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
     }
   );
 
-  socket.on('canvas-scale', async (data: { roomId: string; scaleX: number; scaleY: number }) => {
-    try {
-      const { isGM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
-      if (!isGM) return;
+  socket.on(
+    'canvas-scale',
+    async (data: {
+      roomId: string;
+      scaleX: number;
+      scaleY: number;
+      canvasWidth: number;
+      canvasHeight: number;
+    }) => {
+      try {
+        const { isGM } = await getRoomPermissions(data.roomId, socket.authenticatedUserId);
+        if (!isGM) return;
 
-      await savePendingOperations(data.roomId);
+        await savePendingOperations(data.roomId);
 
-      const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, data.roomId) });
-      if (canvas) {
-        const ops = await db
-          .select()
-          .from(canvasOperations)
-          .where(eq(canvasOperations.canvasId, canvas.id));
+        const canvas = await db.query.canvases.findFirst({
+          where: eq(canvases.roomId, data.roomId),
+        });
+        if (canvas) {
+          const ops = await db
+            .select()
+            .from(canvasOperations)
+            .where(eq(canvasOperations.canvasId, canvas.id));
 
-        for (const op of ops) {
-          const newPoints = (op.points as Point[]).map((p) => ({
-            x: p.x * data.scaleX,
-            y: p.y * data.scaleY,
-          }));
-          await db
-            .update(canvasOperations)
-            .set({ points: newPoints })
-            .where(eq(canvasOperations.id, op.id));
+          for (const op of ops) {
+            const newPoints = (op.points as Point[]).map((p) => ({
+              x: Math.max(0, Math.min(p.x * data.scaleX, data.canvasWidth)),
+              y: Math.max(0, Math.min(p.y * data.scaleY, data.canvasHeight)),
+            }));
+            await db
+              .update(canvasOperations)
+              .set({ points: newPoints })
+              .where(eq(canvasOperations.id, op.id));
+          }
+
+          logger.info(
+            `[CANVAS] Scaled ${ops.length} operations for room ${data.roomId} by (${data.scaleX}, ${data.scaleY})`
+          );
         }
 
-        logger.info(
-          `[CANVAS] Scaled ${ops.length} operations for room ${data.roomId} by (${data.scaleX}, ${data.scaleY})`
-        );
-      }
+        const roomTokens = await db.select().from(tokens).where(eq(tokens.roomId, data.roomId));
+        for (const token of roomTokens) {
+          const clampedX = Math.max(0, Math.min(token.x, data.canvasWidth - token.width));
+          const clampedY = Math.max(0, Math.min(token.y, data.canvasHeight - token.height));
+          if (clampedX !== token.x || clampedY !== token.y) {
+            await db
+              .update(tokens)
+              .set({ x: clampedX, y: clampedY })
+              .where(eq(tokens.id, token.id));
+            socket
+              .to(data.roomId)
+              .emit('token-moved', { tokenId: token.id, x: clampedX, y: clampedY });
+          }
+        }
 
-      const roomTokens = await db.select().from(tokens).where(eq(tokens.roomId, data.roomId));
-      for (const token of roomTokens) {
-        await db
-          .update(tokens)
-          .set({
-            x: token.x * data.scaleX,
-            y: token.y * data.scaleY,
-            width: token.width * data.scaleX,
-            height: token.height * data.scaleY,
-          })
-          .where(eq(tokens.id, token.id));
+        socket.to(data.roomId).emit('canvas-scale', data);
+      } catch (error) {
+        logger.error(`[CANVAS] Error scaling canvas for room ${data.roomId}:`, error);
       }
-
-      socket.to(data.roomId).emit('canvas-scale', data);
-    } catch (error) {
-      logger.error(`[CANVAS] Error scaling canvas for room ${data.roomId}:`, error);
     }
-  });
+  );
 
   socket.on('grid-settings-update', async (data: { roomId: string; gridSettings: unknown }) => {
     try {
