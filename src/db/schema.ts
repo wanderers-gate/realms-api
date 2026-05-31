@@ -121,6 +121,16 @@ export const roomPlayers = sqliteTable(
   (table) => [unique('uq_room_player').on(table.roomId, table.userId)]
 );
 
+export const initiativeTrackers = sqliteTable('initiative_trackers', {
+  id: id(),
+  roomId: text('room_id')
+    .notNull()
+    .unique()
+    .references(() => rooms.id),
+  state: text('state', { mode: 'json' }).notNull().$defaultFn(() => ({})),
+  ...timestamps(),
+});
+
 export const tokens = sqliteTable('tokens', {
   id: id(),
   tokenId: text('token_id').notNull().unique(),

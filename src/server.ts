@@ -13,6 +13,10 @@ import {
   savePendingOperations,
 } from './sockets/canvas.handlers';
 import { registerChatHandlers } from './sockets/chat.handlers';
+import {
+  loadInitiativeState,
+  registerInitiativeHandlers,
+} from './sockets/initiative.handlers';
 import { normalizeDiceRoll } from './sockets/helpers/dice';
 import { loadTokens, registerTokenHandlers } from './sockets/token.handlers';
 import type { RoomState } from './sockets/types';
@@ -54,6 +58,7 @@ io.on('connection', (socket: Socket) => {
   registerCanvasHandlers(socket, io);
   registerTokenHandlers(socket, io);
   registerChatHandlers(socket, io, rooms, userRooms);
+  registerInitiativeHandlers(socket, io);
 
   socket.on('join-room', async (roomId: string, username: string) => {
     const previousRoom = userRooms.get(socket.id);
@@ -113,10 +118,11 @@ io.on('connection', (socket: Socket) => {
       room.messages = [];
     }
 
-    const [existingCanvas, existingTokens, roomPerms] = await Promise.all([
+    const [existingCanvas, existingTokens, roomPerms, initiativeState] = await Promise.all([
       loadExistingCanvas(roomId),
       loadTokens(roomId),
       db.select().from(userPermissions).where(eq(userPermissions.roomId, roomId)),
+      loadInitiativeState(roomId),
     ]);
 
     socket.emit('room-joined', {
@@ -127,6 +133,7 @@ io.on('connection', (socket: Socket) => {
       mapUrl: existingCanvas.mapUrl,
       userPermissions: roomPerms,
       tokens: existingTokens,
+      initiativeState,
     });
 
     socket.to(roomId).emit('user-joined', { userId: socket.id, username });

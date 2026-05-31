@@ -50,6 +50,13 @@
       "when": 1779931761000,
       "tag": "0006_users_role_consolidate",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1780191191000,
+      "tag": "0007_initiative_tracker",
+      "breakpoints": true
     }
   ]
 }
