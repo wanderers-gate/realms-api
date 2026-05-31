@@ -13,11 +13,8 @@ import {
   savePendingOperations,
 } from './sockets/canvas.handlers';
 import { registerChatHandlers } from './sockets/chat.handlers';
-import {
-  loadInitiativeState,
-  registerInitiativeHandlers,
-} from './sockets/initiative.handlers';
 import { normalizeDiceRoll } from './sockets/helpers/dice';
+import { loadInitiativeState, registerInitiativeHandlers } from './sockets/initiative.handlers';
 import { loadTokens, registerTokenHandlers } from './sockets/token.handlers';
 import type { RoomState } from './sockets/types';
 import { verifyJwt } from './utils/jwt';

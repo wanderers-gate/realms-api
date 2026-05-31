@@ -79,7 +79,12 @@ export const createPlayer = async (req: Request, res: Response): Promise<void> =
     const [player] = await db
       .insert(users)
       .values({ username: username.trim(), password: hashedPassword, role: 'player' })
-      .returning({ id: users.id, username: users.username, password: users.password, tokenVersion: users.tokenVersion });
+      .returning({
+        id: users.id,
+        username: users.username,
+        password: users.password,
+        tokenVersion: users.tokenVersion,
+      });
 
     const token = generateToken(player.id, player.tokenVersion);
     res.cookie('token', token, COOKIE_OPTIONS);

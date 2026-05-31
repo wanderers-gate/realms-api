@@ -127,7 +127,9 @@ export const initiativeTrackers = sqliteTable('initiative_trackers', {
     .notNull()
     .unique()
     .references(() => rooms.id),
-  state: text('state', { mode: 'json' }).notNull().$defaultFn(() => ({})),
+  state: text('state', { mode: 'json' })
+    .notNull()
+    .$defaultFn(() => ({})),
   ...timestamps(),
 });
 

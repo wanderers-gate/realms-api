@@ -50,26 +50,23 @@ export async function loadInitiativeState(roomId: string): Promise<InitiativeSta
 }
 
 export function registerInitiativeHandlers(socket: Socket, io: Server): void {
-  socket.on(
-    'initiative-update',
-    async (data: { roomId: string; state: InitiativeState }) => {
-      try {
-        const gmCheck = await isGM(data.roomId, socket.authenticatedUserId);
-        if (!gmCheck) return;
+  socket.on('initiative-update', async (data: { roomId: string; state: InitiativeState }) => {
+    try {
+      const gmCheck = await isGM(data.roomId, socket.authenticatedUserId);
+      if (!gmCheck) return;
 
-        await db
-          .insert(initiativeTrackers)
-          .values({ roomId: data.roomId, state: data.state })
-          .onConflictDoUpdate({
-            target: initiativeTrackers.roomId,
-            set: { state: data.state, updatedAt: new Date() },
-          });
+      await db
+        .insert(initiativeTrackers)
+        .values({ roomId: data.roomId, state: data.state })
+        .onConflictDoUpdate({
+          target: initiativeTrackers.roomId,
+          set: { state: data.state, updatedAt: new Date() },
+        });
 
-        io.to(data.roomId).emit('initiative-updated', data.state);
-        logger.info(`[INITIATIVE] Updated state for room ${data.roomId}`);
-      } catch (error) {
-        logger.error(`[INITIATIVE] Error updating state for room ${data.roomId}:`, error);
-      }
+      io.to(data.roomId).emit('initiative-updated', data.state);
+      logger.info(`[INITIATIVE] Updated state for room ${data.roomId}`);
+    } catch (error) {
+      logger.error(`[INITIATIVE] Error updating state for room ${data.roomId}:`, error);
     }
-  );
+  });
 }
