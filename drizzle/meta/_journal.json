@@ -57,6 +57,13 @@
       "when": 1780191191000,
       "tag": "0007_initiative_tracker",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1780269073000,
+      "tag": "0008_token_stats",
+      "breakpoints": true
     }
   ]
 }

@@ -154,5 +154,9 @@ export const tokens = sqliteTable('tokens', {
   imageOffsetY: real('image_offset_y').notNull().default(0),
   imageScale: real('image_scale').notNull().default(1),
   visible: integer('visible', { mode: 'boolean' }).notNull().default(true),
+  hp: integer('hp').notNull().default(0),
+  maxHp: integer('max_hp').notNull().default(0),
+  conditions: text('conditions', { mode: 'json' }).notNull().$defaultFn(() => []),
+  initiative: integer('initiative').notNull().default(0),
   ...timestamps(),
 });

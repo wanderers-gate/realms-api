@@ -18,6 +18,10 @@ export interface Token {
   imageOffsetY?: number;
   imageScale?: number;
   visible: boolean;
+  hp: number;
+  maxHp: number;
+  conditions: string[];
+  initiative: number;
 }
 
 export interface RoomUser {
