@@ -1,10 +1,12 @@
 import { Router } from 'express';
-import { login, register } from '../controllers/auth.controller';
+import { getCurrentUser, login, logout, register } from '../controllers/auth.controller';
+import { authenticate } from '../middleware/auth.middleware';
 
 const authRouter = Router();
 
-// Public auth routes
 authRouter.post('/register', register);
 authRouter.post('/login', login);
+authRouter.post('/logout', logout);
+authRouter.get('/me', authenticate, getCurrentUser);
 
 export default authRouter;

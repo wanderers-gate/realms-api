@@ -57,6 +57,27 @@
       "when": 1780191191000,
       "tag": "0007_initiative_tracker",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1780269073000,
+      "tag": "0008_token_stats",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1780348230000,
+      "tag": "0009_player_color",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1780426333000,
+      "tag": "0010_player_last_seen",
+      "breakpoints": true
     }
   ]
 }

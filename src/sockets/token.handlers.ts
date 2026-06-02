@@ -28,6 +28,10 @@ function rowToToken(row: typeof tokens.$inferSelect): Token {
     imageOffsetY: row.imageOffsetY,
     imageScale: row.imageScale,
     visible: row.visible,
+    hp: row.hp,
+    maxHp: row.maxHp,
+    conditions: (row.conditions as string[]) ?? [],
+    initiative: row.initiative,
   };
 }
 
@@ -99,6 +103,10 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           ownerId,
           ownerIds,
           visible,
+          hp: 0,
+          maxHp: 0,
+          conditions: [],
+          initiative: 0,
         };
 
         io.to(data.roomId).emit('token-added', token);
@@ -221,6 +229,10 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
       imageOffsetX?: number;
       imageOffsetY?: number;
       imageScale?: number;
+      hp?: number;
+      maxHp?: number;
+      conditions?: string[];
+      initiative?: number;
     }) => {
       try {
         const requesterId = socket.authenticatedUserId || socket.id;
@@ -245,6 +257,10 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
             imageOffsetX: data.imageOffsetX ?? 0,
             imageOffsetY: data.imageOffsetY ?? 0,
             imageScale: data.imageScale ?? 1,
+            hp: data.hp ?? 0,
+            maxHp: data.maxHp ?? 0,
+            conditions: data.conditions ?? [],
+            initiative: data.initiative ?? 0,
           })
           .where(eq(tokens.tokenId, data.tokenId));
         io.to(data.roomId).emit('token-edited', {
@@ -255,6 +271,10 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           imageOffsetX: data.imageOffsetX ?? 0,
           imageOffsetY: data.imageOffsetY ?? 0,
           imageScale: data.imageScale ?? 1,
+          hp: data.hp ?? 0,
+          maxHp: data.maxHp ?? 0,
+          conditions: data.conditions ?? [],
+          initiative: data.initiative ?? 0,
         });
         logger.info(`[TOKEN] Edited token ${data.tokenId}`);
       } catch (error) {
