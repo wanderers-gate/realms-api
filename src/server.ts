@@ -4,7 +4,7 @@ import { Server, type Socket } from 'socket.io';
 import config from './config/config';
 import runMigrations from './config/database';
 import { db } from './db';
-import { rooms as roomsTable, userPermissions } from './db/schema';
+import { rooms as roomsTable, userPermissions, users as usersTable } from './db/schema';
 import app from './index';
 import { chatService } from './services/chat.service';
 import {
@@ -90,6 +90,15 @@ io.on('connection', (socket: Socket) => {
       .set({ currentPlayers: room.users.size, lastActivity: new Date() })
       .where(eq(roomsTable.id, roomId))
       .catch((err) => logger.error(`[ROOM] Failed to update player count for ${roomId}:`, err));
+
+    if (socket.authenticatedUserId) {
+      db.update(usersTable)
+        .set({ lastSeenAt: new Date() })
+        .where(eq(usersTable.id, socket.authenticatedUserId))
+        .catch((err) =>
+          logger.error(`[ROOM] Failed to update lastSeenAt for ${socket.authenticatedUserId}:`, err)
+        );
+    }
 
     logger.info(`User ${username} (${socket.id}) joined room: ${roomId}`);
 

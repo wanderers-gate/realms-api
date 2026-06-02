@@ -24,12 +24,24 @@ const resolveRoomId = async (roomIdOrCode: string): Promise<string | null> => {
 export const getPlayers = async (_req: Request, res: Response): Promise<void> => {
   try {
     const rows = await db
-      .select({ id: users.id, username: users.username, hasPassword: users.password })
+      .select({
+        id: users.id,
+        username: users.username,
+        hasPassword: users.password,
+        lastSeenAt: users.lastSeenAt,
+      })
       .from(users)
       .where(eq(users.role, 'player'))
       .orderBy(users.username);
 
-    res.json(rows.map((p) => ({ id: p.id, username: p.username, hasPassword: !!p.hasPassword })));
+    res.json(
+      rows.map((p) => ({
+        id: p.id,
+        username: p.username,
+        hasPassword: !!p.hasPassword,
+        lastSeenAt: p.lastSeenAt ?? null,
+      }))
+    );
   } catch (error) {
     logger.error('Error fetching players:', error);
     res.status(500).json({ error: 'Failed to fetch players' });
@@ -45,13 +57,25 @@ export const getRoomPlayers = async (req: Request, res: Response): Promise<void>
       return;
     }
     const rows = await db
-      .select({ id: users.id, username: users.username, hasPassword: users.password })
+      .select({
+        id: users.id,
+        username: users.username,
+        hasPassword: users.password,
+        lastSeenAt: users.lastSeenAt,
+      })
       .from(roomPlayers)
       .innerJoin(users, eq(roomPlayers.userId, users.id))
       .where(and(eq(roomPlayers.roomId, roomId), eq(users.role, 'player')))
       .orderBy(users.username);
 
-    res.json(rows.map((p) => ({ id: p.id, username: p.username, hasPassword: !!p.hasPassword })));
+    res.json(
+      rows.map((p) => ({
+        id: p.id,
+        username: p.username,
+        hasPassword: !!p.hasPassword,
+        lastSeenAt: p.lastSeenAt ?? null,
+      }))
+    );
   } catch (error) {
     logger.error('Error fetching room players:', error);
     res.status(500).json({ error: 'Failed to fetch room players' });

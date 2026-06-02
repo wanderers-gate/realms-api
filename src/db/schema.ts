@@ -21,6 +21,7 @@ export const users = sqliteTable('users', {
   color: text('color').notNull().default('#60a5fa'),
   role: text('role').notNull().default('gm'),
   tokenVersion: integer('token_version').notNull().default(0),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
   ...timestamps(),
 });
 

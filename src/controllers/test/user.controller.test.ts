@@ -51,6 +51,7 @@ const mockUser: User = {
   color: '#ff0000',
   role: 'gm',
   tokenVersion: 0,
+  lastSeenAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

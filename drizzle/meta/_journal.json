@@ -71,6 +71,13 @@
       "when": 1780348230000,
       "tag": "0009_player_color",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1780426333000,
+      "tag": "0010_player_last_seen",
+      "breakpoints": true
     }
   ]
 }
