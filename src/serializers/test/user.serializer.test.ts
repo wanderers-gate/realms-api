@@ -8,6 +8,7 @@ describe('User Serializer', () => {
     username: 'johndoe',
     password: 'hashed_password',
     displayName: 'John Doe',
+    color: '#ff0000',
     role: 'gm',
     tokenVersion: 0,
     createdAt: new Date('2024-01-01'),

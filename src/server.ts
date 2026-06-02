@@ -176,6 +176,21 @@ io.on('connection', (socket: Socket) => {
     }
   );
 
+  socket.on('kick-player', async (data: { roomId: string; targetSocketId: string }) => {
+    try {
+      const room = await db.query.rooms.findFirst({
+        where: eq(roomsTable.id, data.roomId),
+        columns: { createdById: true },
+      });
+      if (!room) return;
+      const isGM = socket.authenticatedUserId && room.createdById === socket.authenticatedUserId;
+      if (!isGM) return;
+      io.to(data.targetSocketId).emit('kicked');
+    } catch (err) {
+      logger.error('[KICK] Error kicking player:', err);
+    }
+  });
+
   socket.on('disconnect', () => {
     const roomId = userRooms.get(socket.id);
     if (roomId) {

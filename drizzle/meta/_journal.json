@@ -64,6 +64,13 @@
       "when": 1780269073000,
       "tag": "0008_token_stats",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1780348230000,
+      "tag": "0009_player_color",
+      "breakpoints": true
     }
   ]
 }

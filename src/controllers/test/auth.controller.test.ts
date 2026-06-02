@@ -53,6 +53,7 @@ const mockUserRecord: User = {
   username: 'testuser',
   password: 'hashed-password',
   displayName: null,
+  color: '#ff0000',
   role: 'gm',
   tokenVersion: 0,
   createdAt: new Date(),

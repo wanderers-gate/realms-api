@@ -18,6 +18,7 @@ export const users = sqliteTable('users', {
   username: text('username').notNull().unique(),
   password: text('password'),
   displayName: text('display_name'),
+  color: text('color').notNull().default('#60a5fa'),
   role: text('role').notNull().default('gm'),
   tokenVersion: integer('token_version').notNull().default(0),
   ...timestamps(),
@@ -156,7 +157,9 @@ export const tokens = sqliteTable('tokens', {
   visible: integer('visible', { mode: 'boolean' }).notNull().default(true),
   hp: integer('hp').notNull().default(0),
   maxHp: integer('max_hp').notNull().default(0),
-  conditions: text('conditions', { mode: 'json' }).notNull().$defaultFn(() => []),
+  conditions: text('conditions', { mode: 'json' })
+    .notNull()
+    .$defaultFn(() => []),
   initiative: integer('initiative').notNull().default(0),
   ...timestamps(),
 });
