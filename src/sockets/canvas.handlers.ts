@@ -15,6 +15,9 @@ const createCanvasOperation = (drawingEvent: DrawingEvent & { id?: string }): Ca
   points: drawingEvent.points,
   color: drawingEvent.color,
   size: drawingEvent.size,
+  alpha: drawingEvent.alpha,
+  fill: drawingEvent.fill,
+  rotation: drawingEvent.rotation,
   timestamp: new Date(),
   userId: drawingEvent.userId,
 });
@@ -71,6 +74,7 @@ export async function savePendingOperations(roomId: string): Promise<void> {
         points: op.points,
         color: op.color,
         size: op.size,
+        rotation: op.rotation ?? null,
         userId: op.userId,
         timestamp: op.timestamp,
       }))
@@ -120,6 +124,7 @@ export async function loadExistingCanvas(
         points: op.points as Point[],
         color: op.color,
         size: op.size,
+        rotation: op.rotation ?? undefined,
         timestamp: op.timestamp,
         userId: op.userId,
       })),
@@ -269,6 +274,74 @@ export function registerCanvasHandlers(socket: Socket, _io: Server): void {
         logger.info(`[CANVAS] Moved shape ${data.operationId} in room ${data.roomId}`);
       } catch (error) {
         logger.error(`[CANVAS] Error moving shape in room ${data.roomId}:`, error);
+      }
+    }
+  );
+
+  socket.on(
+    'shape-resize',
+    async (data: { roomId: string; operationId: string; newPoints: Point[] }) => {
+      try {
+        await savePendingOperations(data.roomId);
+        const requesterUserId = socket.authenticatedUserId || socket.id;
+        const { isGM, hasModifyPermission } = await getRoomPermissions(
+          data.roomId,
+          socket.authenticatedUserId
+        );
+        const canvas = await db.query.canvases.findFirst({
+          where: eq(canvases.roomId, data.roomId),
+        });
+        if (!canvas) return;
+        const op = await db.query.canvasOperations.findFirst({
+          where: and(
+            eq(canvasOperations.canvasId, canvas.id),
+            eq(canvasOperations.opId, data.operationId)
+          ),
+        });
+        if (!op) return;
+        if (!isGM && !hasModifyPermission && op.userId !== requesterUserId) return;
+        await db
+          .update(canvasOperations)
+          .set({ points: data.newPoints })
+          .where(eq(canvasOperations.id, op.id));
+        socket.to(data.roomId).emit('shape-resized', data);
+        logger.info(`[CANVAS] Resized shape ${data.operationId} in room ${data.roomId}`);
+      } catch (error) {
+        logger.error(`[CANVAS] Error resizing shape in room ${data.roomId}:`, error);
+      }
+    }
+  );
+
+  socket.on(
+    'shape-rotate',
+    async (data: { roomId: string; operationId: string; rotation: number }) => {
+      try {
+        await savePendingOperations(data.roomId);
+        const requesterUserId = socket.authenticatedUserId || socket.id;
+        const { isGM, hasModifyPermission } = await getRoomPermissions(
+          data.roomId,
+          socket.authenticatedUserId
+        );
+        const canvas = await db.query.canvases.findFirst({
+          where: eq(canvases.roomId, data.roomId),
+        });
+        if (!canvas) return;
+        const op = await db.query.canvasOperations.findFirst({
+          where: and(
+            eq(canvasOperations.canvasId, canvas.id),
+            eq(canvasOperations.opId, data.operationId)
+          ),
+        });
+        if (!op) return;
+        if (!isGM && !hasModifyPermission && op.userId !== requesterUserId) return;
+        await db
+          .update(canvasOperations)
+          .set({ rotation: data.rotation })
+          .where(eq(canvasOperations.id, op.id));
+        socket.to(data.roomId).emit('shape-rotated', data);
+        logger.info(`[CANVAS] Rotated shape ${data.operationId} in room ${data.roomId}`);
+      } catch (error) {
+        logger.error(`[CANVAS] Error rotating shape in room ${data.roomId}:`, error);
       }
     }
   );

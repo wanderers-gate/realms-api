@@ -4,14 +4,14 @@ import { asc, eq } from 'drizzle-orm';
 import { Server } from 'socket.io';
 import type { Socket } from 'socket.io';
 import { io as Client } from 'socket.io-client';
-import app from '../index';
-import type { DrawingEvent } from '../types/canvas';
+import app from '../../index';
+import type { DrawingEvent } from '../../types/canvas';
 
 const TEST_USER_ID = 'user-id-socket-test-001';
 const TEST_ROOM_ID = 'room-id-socket-test-001';
 const TEST_CANVAS_ID = 'canvas-id-socket-test-001';
 
-jest.mock('../db', () => ({
+jest.mock('../../db', () => ({
   db: {
     query: {
       canvases: { findFirst: jest.fn() },
@@ -23,8 +23,8 @@ jest.mock('../db', () => ({
   },
 }));
 
-import { db } from '../db';
-import { canvasOperations, canvases, rooms } from '../db/schema';
+import { db } from '../../db';
+import { canvasOperations, canvases, rooms } from '../../db/schema';
 
 const testCanvas = { id: TEST_CANVAS_ID, roomId: TEST_ROOM_ID, createdById: TEST_USER_ID };
 const testRoom = { id: TEST_ROOM_ID, createdById: TEST_USER_ID };
