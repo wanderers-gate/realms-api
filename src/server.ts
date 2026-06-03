@@ -15,6 +15,7 @@ import {
 import { registerChatHandlers } from './sockets/chat.handlers';
 import { normalizeDiceRoll } from './sockets/helpers/dice';
 import { loadInitiativeState, registerInitiativeHandlers } from './sockets/initiative.handlers';
+import { registerPingHandlers } from './sockets/ping.handlers';
 import { loadTokens, registerTokenHandlers } from './sockets/token.handlers';
 import type { RoomState } from './sockets/types';
 import { verifyJwt } from './utils/jwt';
@@ -56,6 +57,7 @@ io.on('connection', (socket: Socket) => {
   registerTokenHandlers(socket, io);
   registerChatHandlers(socket, io, rooms, userRooms);
   registerInitiativeHandlers(socket, io);
+  registerPingHandlers(socket, io);
 
   socket.on('join-room', async (roomId: string, username: string) => {
     const previousRoom = userRooms.get(socket.id);
