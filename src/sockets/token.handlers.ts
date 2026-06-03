@@ -145,6 +145,10 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
     }
   );
 
+  socket.on('token-drag', (data: { roomId: string; tokenId: string; x: number; y: number }) => {
+    socket.to(data.roomId).emit('token-dragged', { tokenId: data.tokenId, x: data.x, y: data.y });
+  });
+
   socket.on(
     'token-resize',
     async (data: { roomId: string; tokenId: string; width: number; height: number }) => {
