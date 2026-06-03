@@ -160,7 +160,12 @@ export const verifyPlayerPassword = async (req: Request, res: Response): Promise
     const token = generateToken(player.id, player.tokenVersion);
     res.cookie('token', token, COOKIE_OPTIONS);
 
-    res.json({ id: player.id, username: player.username, color: player.color, hasPassword: !!player.password });
+    res.json({
+      id: player.id,
+      username: player.username,
+      color: player.color,
+      hasPassword: !!player.password,
+    });
   } catch (error) {
     logger.error('Error verifying player password:', error);
     res.status(500).json({ error: 'Failed to verify password' });
