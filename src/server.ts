@@ -13,6 +13,7 @@ import {
   savePendingOperations,
 } from './sockets/canvas.handlers';
 import { registerChatHandlers } from './sockets/chat.handlers';
+import { registerCursorHandlers } from './sockets/cursor.handlers';
 import { normalizeDiceRoll } from './sockets/helpers/dice';
 import { loadInitiativeState, registerInitiativeHandlers } from './sockets/initiative.handlers';
 import { registerPingHandlers } from './sockets/ping.handlers';
@@ -58,6 +59,7 @@ io.on('connection', (socket: Socket) => {
   registerChatHandlers(socket, io, rooms, userRooms);
   registerInitiativeHandlers(socket, io);
   registerPingHandlers(socket, io);
+  registerCursorHandlers(socket, io);
 
   socket.on('join-room', async (roomId: string, username: string) => {
     const previousRoom = userRooms.get(socket.id);
