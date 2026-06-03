@@ -60,6 +60,7 @@ export const getRoomPlayers = async (req: Request, res: Response): Promise<void>
       .select({
         id: users.id,
         username: users.username,
+        color: users.color,
         hasPassword: users.password,
         lastSeenAt: users.lastSeenAt,
       })
@@ -72,6 +73,7 @@ export const getRoomPlayers = async (req: Request, res: Response): Promise<void>
       rows.map((p) => ({
         id: p.id,
         username: p.username,
+        color: p.color,
         hasPassword: !!p.hasPassword,
         lastSeenAt: p.lastSeenAt ?? null,
       }))
@@ -158,7 +160,7 @@ export const verifyPlayerPassword = async (req: Request, res: Response): Promise
     const token = generateToken(player.id, player.tokenVersion);
     res.cookie('token', token, COOKIE_OPTIONS);
 
-    res.json({ id: player.id, username: player.username });
+    res.json({ id: player.id, username: player.username, color: player.color, hasPassword: !!player.password });
   } catch (error) {
     logger.error('Error verifying player password:', error);
     res.status(500).json({ error: 'Failed to verify password' });
