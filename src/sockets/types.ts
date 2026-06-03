@@ -44,3 +44,12 @@ export interface RoomState {
   users: Map<string, RoomUser>;
   messages: ChatMessage[];
 }
+
+export interface PingEvent {
+  id: string;
+  x: number;
+  y: number;
+  userId: string;
+  username: string;
+  color: string;
+}
