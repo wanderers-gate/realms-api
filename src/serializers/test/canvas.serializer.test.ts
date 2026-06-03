@@ -33,6 +33,7 @@ describe('Canvas Serializer', () => {
       points: [{ x: 10, y: 20 }],
       color: '#000000',
       size: 2,
+      rotation: null,
       userId: 'user123',
       timestamp: new Date('2023-01-01T00:00:00Z'),
     },

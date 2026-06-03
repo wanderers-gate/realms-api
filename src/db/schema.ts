@@ -104,6 +104,7 @@ export const canvasOperations = sqliteTable('canvas_operations', {
   points: text('points', { mode: 'json' }).notNull(),
   color: text('color').notNull(),
   size: real('size').notNull(),
+  rotation: real('rotation'),
   userId: text('user_id').notNull(),
   timestamp: integer('timestamp', { mode: 'timestamp' }).notNull(),
 });
