@@ -59,7 +59,7 @@ export function registerChatHandlers(
     try {
       const savedMessage = await chatService.saveMessage(
         roomId,
-        socket.id,
+        socket.authenticatedUserId ?? socket.id,
         username,
         displayMessage,
         diceRoll ?? undefined
@@ -67,7 +67,7 @@ export function registerChatHandlers(
 
       const chatMessage = {
         id: savedMessage.id,
-        userId: socket.id,
+        userId: socket.authenticatedUserId ?? socket.id,
         username,
         message: displayMessage,
         timestamp: savedMessage.timestamp ?? new Date(),

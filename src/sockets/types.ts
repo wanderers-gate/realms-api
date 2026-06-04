@@ -28,6 +28,7 @@ export interface RoomUser {
   id: string;
   authenticatedUserId?: string;
   username: string;
+  color?: string;
   joinedAt: Date;
 }
 

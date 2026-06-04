@@ -92,6 +92,13 @@
       "when": 1780540784000,
       "tag": "0012_handout_shares",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1780607453000,
+      "tag": "0013_chat_user_id_to_auth_user",
+      "breakpoints": true
     }
   ]
 }

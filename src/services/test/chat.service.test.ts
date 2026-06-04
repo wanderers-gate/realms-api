@@ -32,12 +32,14 @@ const makeMessage = (
   ...extra,
 });
 
-// select chain: from().where().orderBy().limit()
+// select chain: from().leftJoin().where().orderBy().limit()
 const makeSelectChain = (data: unknown[]) => ({
   from: jest.fn().mockReturnValue({
-    where: jest.fn().mockReturnValue({
-      orderBy: jest.fn().mockReturnValue({
-        limit: jest.fn().mockResolvedValue(data),
+    leftJoin: jest.fn().mockReturnValue({
+      where: jest.fn().mockReturnValue({
+        orderBy: jest.fn().mockReturnValue({
+          limit: jest.fn().mockResolvedValue(data),
+        }),
       }),
     }),
   }),

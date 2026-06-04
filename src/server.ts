@@ -63,7 +63,7 @@ io.on('connection', (socket: Socket) => {
   registerCursorHandlers(socket, io);
   registerHandoutHandlers(socket, io);
 
-  socket.on('join-room', async (roomId: string, username: string) => {
+  socket.on('join-room', async (roomId: string, username: string, color?: string) => {
     const previousRoom = userRooms.get(socket.id);
     if (previousRoom) {
       socket.leave(previousRoom);
@@ -89,6 +89,7 @@ io.on('connection', (socket: Socket) => {
       id: socket.id,
       authenticatedUserId: socket.authenticatedUserId,
       username,
+      color,
       joinedAt: new Date(),
     });
 
@@ -148,7 +149,7 @@ io.on('connection', (socket: Socket) => {
       initiativeState,
     });
 
-    socket.to(roomId).emit('user-joined', { userId: socket.id, username });
+    socket.to(roomId).emit('user-joined', { userId: socket.id, username, color });
     updateRoomUserList(roomId);
   });
 
@@ -190,6 +191,21 @@ io.on('connection', (socket: Socket) => {
       }
     }
   );
+
+  socket.on('update-profile', (data: { color?: string; username?: string }) => {
+    const roomId = userRooms.get(socket.id);
+    if (!roomId) return;
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const user = room.users.get(socket.id);
+    if (!user) return;
+    if (data.color) user.color = data.color;
+    if (data.username) {
+      user.username = data.username;
+      socket.username = data.username;
+    }
+    io.to(roomId).emit('user-list-updated', Array.from(room.users.values()));
+  });
 
   socket.on('kick-player', async (data: { roomId: string; targetSocketId: string }) => {
     try {

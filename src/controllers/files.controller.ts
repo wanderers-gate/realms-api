@@ -301,11 +301,9 @@ export const createFolder = async (req: Request, res: Response): Promise<void> =
     const { path: folderPath } = req.body as { path?: unknown };
 
     if (!req.userId) {
-      res
-        .status(401)
-        .json({
-          errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-        });
+      res.status(401).json({
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+      });
       return;
     }
     if (!isSafePath(folderPath)) {
@@ -328,13 +326,11 @@ export const createFolder = async (req: Request, res: Response): Promise<void> =
     res.status(201).json({ data: { path: folderPath } });
   } catch (error) {
     logger.error('Error creating folder:', error);
-    res
-      .status(500)
-      .json({
-        errors: [
-          { status: '500', title: 'Internal Server Error', detail: 'Failed to create folder' },
-        ],
-      });
+    res.status(500).json({
+      errors: [
+        { status: '500', title: 'Internal Server Error', detail: 'Failed to create folder' },
+      ],
+    });
   }
 };
 
@@ -344,11 +340,9 @@ export const moveFile = async (req: Request, res: Response): Promise<void> => {
     const { from, to } = req.body as { from?: unknown; to?: unknown };
 
     if (!req.userId) {
-      res
-        .status(401)
-        .json({
-          errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-        });
+      res.status(401).json({
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+      });
       return;
     }
     if (!isSafeFilePath(from) || !isSafeFilePath(to)) {
@@ -390,11 +384,9 @@ export const moveFile = async (req: Request, res: Response): Promise<void> => {
     res.json({ data: { url: newUrl } });
   } catch (error) {
     logger.error('Error moving file:', error);
-    res
-      .status(500)
-      .json({
-        errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to move file' }],
-      });
+    res.status(500).json({
+      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to move file' }],
+    });
   }
 };
 
@@ -418,16 +410,14 @@ export const getHandoutShares = async (req: Request, res: Response): Promise<voi
     res.json({ data: { shared: [...shared] } });
   } catch (error) {
     logger.error('Error fetching handout shares:', error);
-    res
-      .status(500)
-      .json({
-        errors: [
-          {
-            status: '500',
-            title: 'Internal Server Error',
-            detail: 'Failed to fetch handout shares',
-          },
-        ],
-      });
+    res.status(500).json({
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'Failed to fetch handout shares',
+        },
+      ],
+    });
   }
 };
