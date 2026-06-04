@@ -136,6 +136,20 @@ export const initiativeTrackers = sqliteTable('initiative_trackers', {
   ...timestamps(),
 });
 
+export const handoutShares = sqliteTable(
+  'handout_shares',
+  {
+    id: id(),
+    roomId: text('room_id')
+      .notNull()
+      .references(() => rooms.id, { onDelete: 'cascade' }),
+    imageUrl: text('image_url').notNull(),
+    isShared: integer('is_shared', { mode: 'boolean' }).notNull().default(true),
+    ...timestamps(),
+  },
+  (table) => [unique('uq_handout_share').on(table.roomId, table.imageUrl)]
+);
+
 export const tokens = sqliteTable('tokens', {
   id: id(),
   tokenId: text('token_id').notNull().unique(),
