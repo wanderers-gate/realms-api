@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import multer from 'multer';
 import config from '../config/config';
 import { db } from '../db';
-import { rooms } from '../db/schema';
+import { handoutShares, rooms } from '../db/schema';
 import logger from '../utils/logger';
 
 export const fileUpload = multer({
@@ -26,6 +26,21 @@ const isSafePath = (p: unknown): p is string => {
   if (p === '') return true;
   const segments = p.split('/');
   return segments.length <= 10 && segments.every(isSafeName);
+};
+
+// Validates a path that ends in a filename (last segment may contain dots)
+const isSafeFilePath = (p: unknown): p is string => {
+  if (typeof p !== 'string' || !p) return false;
+  const segments = p.split('/');
+  if (segments.length < 1 || segments.length > 10) return false;
+  const dirs = segments.slice(0, -1);
+  const filename = segments[segments.length - 1];
+  return (
+    dirs.every(isSafeName) &&
+    filename.length > 0 &&
+    filename.length <= 120 &&
+    /^[a-zA-Z0-9][a-zA-Z0-9 _.-]*$/.test(filename)
+  );
 };
 
 const assetsDir = (slug: string) => path.join(config.dataDir, 'rooms', slug, 'assets');
@@ -261,11 +276,158 @@ export const deleteFile = async (req: Request, res: Response): Promise<void> => 
     }
 
     fs.unlinkSync(filePath);
+
+    // Clean up any share record for this file
+    const imageUrl = `rooms/${room.slug}/${folderPath ? `${folderPath}/` : ''}${filename}`;
+    await db
+      .delete(handoutShares)
+      .where(and(eq(handoutShares.roomId, room.id), eq(handoutShares.imageUrl, imageUrl)))
+      .catch(() => {
+        /* non-fatal */
+      });
+
     res.status(200).json({ data: { deleted: true } });
   } catch (error) {
     logger.error('Error deleting file:', error);
     res.status(500).json({
       errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to delete file' }],
     });
+  }
+};
+
+export const createFolder = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { roomId } = req.params;
+    const { path: folderPath } = req.body as { path?: unknown };
+
+    if (!req.userId) {
+      res
+        .status(401)
+        .json({
+          errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+        });
+      return;
+    }
+    if (!isSafePath(folderPath)) {
+      res
+        .status(400)
+        .json({ errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid path' }] });
+      return;
+    }
+
+    const room = await resolveRoom(roomId);
+    if (!room) {
+      res
+        .status(404)
+        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      return;
+    }
+
+    const dir = resolveDir(room.slug, folderPath as string);
+    fs.mkdirSync(dir, { recursive: true });
+    res.status(201).json({ data: { path: folderPath } });
+  } catch (error) {
+    logger.error('Error creating folder:', error);
+    res
+      .status(500)
+      .json({
+        errors: [
+          { status: '500', title: 'Internal Server Error', detail: 'Failed to create folder' },
+        ],
+      });
+  }
+};
+
+export const moveFile = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { roomId } = req.params;
+    const { from, to } = req.body as { from?: unknown; to?: unknown };
+
+    if (!req.userId) {
+      res
+        .status(401)
+        .json({
+          errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+        });
+      return;
+    }
+    if (!isSafeFilePath(from) || !isSafeFilePath(to)) {
+      res
+        .status(400)
+        .json({ errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid path' }] });
+      return;
+    }
+
+    const room = await resolveRoom(roomId);
+    if (!room) {
+      res
+        .status(404)
+        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      return;
+    }
+
+    const base = path.join(config.dataDir, 'rooms', room.slug);
+    const fromPath = path.join(base, ...(from as string).split('/'));
+    const toPath = path.join(base, ...(to as string).split('/'));
+
+    if (!fromPath.startsWith(base + path.sep) || !toPath.startsWith(base + path.sep)) {
+      res
+        .status(400)
+        .json({ errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid file path' }] });
+      return;
+    }
+    if (!fs.existsSync(fromPath)) {
+      res
+        .status(404)
+        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Source file not found' }] });
+      return;
+    }
+
+    fs.mkdirSync(path.dirname(toPath), { recursive: true });
+    fs.renameSync(fromPath, toPath);
+
+    const newUrl = `rooms/${room.slug}/${to as string}`;
+    res.json({ data: { url: newUrl } });
+  } catch (error) {
+    logger.error('Error moving file:', error);
+    res
+      .status(500)
+      .json({
+        errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to move file' }],
+      });
+  }
+};
+
+export const getHandoutShares = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { roomId } = req.params;
+    const room = await resolveRoom(roomId);
+    if (!room) {
+      res
+        .status(404)
+        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      return;
+    }
+
+    const rows = await db
+      .select({ imageUrl: handoutShares.imageUrl })
+      .from(handoutShares)
+      .where(and(eq(handoutShares.roomId, room.id), eq(handoutShares.isShared, true)));
+
+    const shared = new Set(rows.map((r) => r.imageUrl));
+    res.json({ data: { shared: [...shared] } });
+  } catch (error) {
+    logger.error('Error fetching handout shares:', error);
+    res
+      .status(500)
+      .json({
+        errors: [
+          {
+            status: '500',
+            title: 'Internal Server Error',
+            detail: 'Failed to fetch handout shares',
+          },
+        ],
+      });
   }
 };
