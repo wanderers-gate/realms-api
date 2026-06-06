@@ -16,6 +16,7 @@ import { registerChatHandlers } from './sockets/chat.handlers';
 import { registerCursorHandlers } from './sockets/cursor.handlers';
 import { registerHandoutHandlers } from './sockets/handout.handlers';
 import { normalizeDiceRoll } from './sockets/helpers/dice';
+import { registerSheetHandlers } from './sockets/sheet.handlers';
 import { loadInitiativeState, registerInitiativeHandlers } from './sockets/initiative.handlers';
 import { registerPingHandlers } from './sockets/ping.handlers';
 import { loadTokens, registerTokenHandlers } from './sockets/token.handlers';
@@ -38,6 +39,8 @@ const io = new Server(httpServer, {
   },
 });
 
+app.set('io', io);
+
 const rooms = new Map<string, RoomState>();
 const userRooms = new Map<string, string>();
 
@@ -57,6 +60,7 @@ io.on('connection', (socket: Socket) => {
 
   registerCanvasHandlers(socket, io);
   registerTokenHandlers(socket, io);
+  registerSheetHandlers(socket, io);
   registerChatHandlers(socket, io, rooms, userRooms);
   registerInitiativeHandlers(socket, io);
   registerPingHandlers(socket, io);

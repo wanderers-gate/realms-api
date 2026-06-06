@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Server, Socket } from 'socket.io';
 import { db } from '../db';
-import { rooms, tokens } from '../db/schema';
+import { characterSheets, rooms, tokens } from '../db/schema';
 import logger from '../utils/logger';
 import type { Token } from './types';
 
@@ -281,6 +281,21 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           initiative: data.initiative ?? 0,
         });
         logger.info(`[TOKEN] Edited token ${data.tokenId}`);
+
+        // Notify linked sheet so frontend can write stats back to sheetData
+        const linkedSheet = await db.query.characterSheets.findFirst({
+          where: eq(characterSheets.tokenId, data.tokenId),
+          columns: { id: true, roomId: true },
+        });
+        if (linkedSheet) {
+          io.to(linkedSheet.roomId).emit('sheet-stats-updated', {
+            sheetId: linkedSheet.id,
+            hp: data.hp ?? 0,
+            maxHp: data.maxHp ?? 0,
+            initiative: data.initiative ?? 0,
+            conditions: data.conditions ?? [],
+          });
+        }
       } catch (error) {
         logger.error(`[TOKEN] Error editing token ${data.tokenId}:`, error);
       }
@@ -323,6 +338,55 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
         logger.info(`[TOKEN] Set token ${data.tokenId} visibility to ${data.visible}`);
       } catch (error) {
         logger.error(`[TOKEN] Error toggling visibility for token ${data.tokenId}:`, error);
+      }
+    }
+  );
+
+  // Emitted by frontend useSheetSync when sheetData changes on a linked sheet
+  socket.on(
+    'token-stats',
+    async (data: {
+      roomId: string;
+      tokenId: string;
+      hp: number;
+      maxHp: number;
+      initiative: number;
+      conditions: string[];
+    }) => {
+      try {
+        const requesterId = socket.authenticatedUserId || socket.id;
+        const token = await db.query.tokens.findFirst({
+          where: and(eq(tokens.tokenId, data.tokenId), eq(tokens.roomId, data.roomId)),
+        });
+        if (!token) return;
+
+        const ownerIds = (token.ownerIds as string[]) ?? [token.ownerId];
+        if (
+          !(await isGM(data.roomId, socket.authenticatedUserId)) &&
+          !ownerIds.includes(requesterId)
+        )
+          return;
+
+        await db
+          .update(tokens)
+          .set({
+            hp: data.hp,
+            maxHp: data.maxHp,
+            initiative: data.initiative,
+            conditions: data.conditions,
+          })
+          .where(eq(tokens.tokenId, data.tokenId));
+
+        io.to(data.roomId).emit('token-stats-updated', {
+          tokenId: data.tokenId,
+          hp: data.hp,
+          maxHp: data.maxHp,
+          initiative: data.initiative,
+          conditions: data.conditions,
+        });
+        logger.info(`[TOKEN] Stats updated for token ${data.tokenId} from linked sheet`);
+      } catch (error) {
+        logger.error(`[TOKEN] Error handling token-stats for ${data.tokenId}:`, error);
       }
     }
   );

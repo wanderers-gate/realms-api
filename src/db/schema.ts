@@ -150,6 +150,23 @@ export const handoutShares = sqliteTable(
   (table) => [unique('uq_handout_share').on(table.roomId, table.imageUrl)]
 );
 
+export const characterSheets = sqliteTable('character_sheets', {
+  id: id(),
+  roomId: text('room_id')
+    .notNull()
+    .references(() => rooms.id, { onDelete: 'cascade' }),
+  ownerId: text('owner_id').notNull(),
+  tokenId: text('token_id'),
+  systemId: text('system_id').notNull(),
+  name: text('name').notNull(),
+  isNpc: integer('is_npc', { mode: 'boolean' }).notNull().default(false),
+  portraitUrl: text('portrait_url'),
+  sheetData: text('sheet_data', { mode: 'json' })
+    .notNull()
+    .$defaultFn(() => ({})),
+  ...timestamps(),
+});
+
 export const tokens = sqliteTable('tokens', {
   id: id(),
   tokenId: text('token_id').notNull().unique(),
