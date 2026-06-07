@@ -7,6 +7,7 @@ import multer from 'multer';
 import config from '../config/config';
 import { db } from '../db';
 import { canvasOperations, canvases, rooms } from '../db/schema';
+import { sendError } from '../helpers/response';
 import {
   deserializeCanvas,
   serializeCanvas,
@@ -39,24 +40,18 @@ export const getCanvas = async (req: Request, res: Response): Promise<void> => {
     });
 
     if (!room) {
-      res.status(404).json({
-        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
-      });
+      sendError(res, 404, 'Room Not Found', 'Room not found or inactive');
       return;
     }
 
     if (!req.userId && !room.allowGuests) {
-      res.status(403).json({
-        errors: [{ status: '403', title: 'Forbidden', detail: 'This room does not allow guests' }],
-      });
+      sendError(res, 403, 'Forbidden', 'This room does not allow guests');
       return;
     }
 
     const canvas = await getOrCreateCanvas(roomId);
     if (!canvas) {
-      res
-        .status(404)
-        .json({ errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found' }] });
+      sendError(res, 404, 'Room Not Found', 'Room not found');
       return;
     }
 
@@ -69,9 +64,7 @@ export const getCanvas = async (req: Request, res: Response): Promise<void> => {
     res.json(serializeCanvas(canvas, ops));
   } catch (error) {
     logger.error('Error fetching canvas:', error);
-    res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to fetch canvas' }],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to fetch canvas');
   }
 };
 
@@ -81,11 +74,7 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
     const userId = req.userId;
 
     if (!userId) {
-      res.status(401).json({
-        errors: [
-          { status: '401', title: 'Unauthorized', detail: 'User must be authenticated to draw' },
-        ],
-      });
+      sendError(res, 401, 'Unauthorized', 'User must be authenticated to draw');
       return;
     }
 
@@ -94,26 +83,20 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
     });
 
     if (!room) {
-      res.status(404).json({
-        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
-      });
+      sendError(res, 404, 'Room Not Found', 'Room not found or inactive');
       return;
     }
 
     const operationData = deserializeCanvas((req.body.data || req.body) as JsonApiResourceObject);
 
     if (!operationData.operations?.length) {
-      res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid operation data' }],
-      });
+      sendError(res, 400, 'Bad Request', 'Invalid operation data');
       return;
     }
 
     const canvas = await getOrCreateCanvas(roomId);
     if (!canvas) {
-      res
-        .status(404)
-        .json({ errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found' }] });
+      sendError(res, 404, 'Room Not Found', 'Room not found');
       return;
     }
 
@@ -139,15 +122,7 @@ export const addCanvasOperation = async (req: Request, res: Response): Promise<v
     res.status(201).json(serializeCanvasOperations([newOperation]));
   } catch (error) {
     logger.error('Error adding canvas operation:', error);
-    res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to add drawing operation',
-        },
-      ],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to add drawing operation');
   }
 };
 
@@ -157,15 +132,7 @@ export const deleteCanvasOperations = async (req: Request, res: Response): Promi
     const userId = req.userId;
 
     if (!userId) {
-      res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User must be authenticated to delete operations',
-          },
-        ],
-      });
+      sendError(res, 401, 'Unauthorized', 'User must be authenticated to delete operations');
       return;
     }
 
@@ -174,30 +141,20 @@ export const deleteCanvasOperations = async (req: Request, res: Response): Promi
     });
 
     if (!room) {
-      res.status(404).json({
-        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
-      });
+      sendError(res, 404, 'Room Not Found', 'Room not found or inactive');
       return;
     }
 
     const { operationIds } = req.body as { operationIds?: unknown };
 
     if (!Array.isArray(operationIds) || operationIds.length === 0) {
-      res.status(400).json({
-        errors: [
-          { status: '400', title: 'Bad Request', detail: 'Operation IDs array is required' },
-        ],
-      });
+      sendError(res, 400, 'Bad Request', 'Operation IDs array is required');
       return;
     }
 
     const canvas = await db.query.canvases.findFirst({ where: eq(canvases.roomId, roomId) });
     if (!canvas) {
-      res.status(404).json({
-        errors: [
-          { status: '404', title: 'Canvas Not Found', detail: 'Canvas not found for this room' },
-        ],
-      });
+      sendError(res, 404, 'Canvas Not Found', 'Canvas not found for this room');
       return;
     }
 
@@ -223,15 +180,7 @@ export const deleteCanvasOperations = async (req: Request, res: Response): Promi
       .json({ data: { deletedCount: deleted.length, remainingOperations: remaining.length } });
   } catch (error) {
     logger.error('Error deleting canvas operations:', error);
-    res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to delete canvas operations',
-        },
-      ],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to delete canvas operations');
   }
 };
 
@@ -249,34 +198,24 @@ export const uploadMap = async (req: Request, res: Response): Promise<void> => {
     const { roomId } = req.params;
 
     if (!req.userId) {
-      res.status(401).json({
-        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-      });
+      sendError(res, 401, 'Unauthorized', 'Authentication required');
       return;
     }
 
     const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
     if (!room) {
-      res
-        .status(404)
-        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
     if (room.createdById !== req.userId) {
-      res.status(403).json({
-        errors: [
-          { status: '403', title: 'Forbidden', detail: 'Only the room creator can upload maps' },
-        ],
-      });
+      sendError(res, 403, 'Forbidden', 'Only the room creator can upload maps');
       return;
     }
 
     const file = req.file;
     if (!file) {
-      res
-        .status(400)
-        .json({ errors: [{ status: '400', title: 'Bad Request', detail: 'No file uploaded' }] });
+      sendError(res, 400, 'Bad Request', 'No file uploaded');
       return;
     }
 
@@ -296,9 +235,7 @@ export const uploadMap = async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({ data: { mapUrl } });
   } catch (error) {
     logger.error('Error uploading map:', error);
-    res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to upload map' }],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to upload map');
   }
 };
 
@@ -308,26 +245,18 @@ export const setMapUrl = async (req: Request, res: Response): Promise<void> => {
     const { mapUrl } = req.body as { mapUrl?: unknown };
 
     if (!req.userId) {
-      res.status(401).json({
-        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-      });
+      sendError(res, 401, 'Unauthorized', 'Authentication required');
       return;
     }
 
     const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
     if (!room) {
-      res.status(404).json({
-        errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }],
-      });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
     if (room.createdById !== req.userId) {
-      res.status(403).json({
-        errors: [
-          { status: '403', title: 'Forbidden', detail: 'Only the room creator can set the map' },
-        ],
-      });
+      sendError(res, 403, 'Forbidden', 'Only the room creator can set the map');
       return;
     }
 
@@ -335,9 +264,7 @@ export const setMapUrl = async (req: Request, res: Response): Promise<void> => {
       mapUrl !== null &&
       (typeof mapUrl !== 'string' || !mapUrl.startsWith(`rooms/${room.slug}/`))
     ) {
-      res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid map URL' }],
-      });
+      sendError(res, 400, 'Bad Request', 'Invalid map URL');
       return;
     }
 
@@ -352,9 +279,7 @@ export const setMapUrl = async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({ data: { mapUrl: mapUrl ?? null } });
   } catch (error) {
     logger.error('Error setting map URL:', error);
-    res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to set map URL' }],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to set map URL');
   }
 };
 
@@ -363,26 +288,18 @@ export const removeMap = async (req: Request, res: Response): Promise<void> => {
     const { roomId } = req.params;
 
     if (!req.userId) {
-      res.status(401).json({
-        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-      });
+      sendError(res, 401, 'Unauthorized', 'Authentication required');
       return;
     }
 
     const room = await db.query.rooms.findFirst({ where: eq(rooms.id, roomId) });
     if (!room) {
-      res
-        .status(404)
-        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
     if (room.createdById !== req.userId) {
-      res.status(403).json({
-        errors: [
-          { status: '403', title: 'Forbidden', detail: 'Only the room creator can remove maps' },
-        ],
-      });
+      sendError(res, 403, 'Forbidden', 'Only the room creator can remove maps');
       return;
     }
 
@@ -394,8 +311,6 @@ export const removeMap = async (req: Request, res: Response): Promise<void> => {
     res.status(200).json({ data: { mapUrl: null } });
   } catch (error) {
     logger.error('Error removing map:', error);
-    res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to remove map' }],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to remove map');
   }
 };

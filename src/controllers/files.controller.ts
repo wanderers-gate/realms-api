@@ -6,6 +6,7 @@ import multer from 'multer';
 import config from '../config/config';
 import { db } from '../db';
 import { handoutShares, rooms } from '../db/schema';
+import { sendError } from '../helpers/response';
 import logger from '../utils/logger';
 
 export const fileUpload = multer({
@@ -63,9 +64,7 @@ export const listFolders = async (req: Request, res: Response): Promise<void> =>
 
     const room = await resolveRoom(roomId);
     if (!room) {
-      res.status(404).json({
-        errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }],
-      });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
@@ -84,9 +83,7 @@ export const listFolders = async (req: Request, res: Response): Promise<void> =>
     res.json({ data: { folders } });
   } catch (error) {
     logger.error('Error listing folders:', error);
-    res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to list folders' }],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to list folders');
   }
 };
 
@@ -96,17 +93,13 @@ export const listFiles = async (req: Request, res: Response): Promise<void> => {
     const { path: folderPath = '' } = req.query;
 
     if (!isSafePath(folderPath)) {
-      res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid path' }],
-      });
+      sendError(res, 400, 'Bad Request', 'Invalid path');
       return;
     }
 
     const room = await resolveRoom(roomId);
     if (!room) {
-      res.status(404).json({
-        errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }],
-      });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
@@ -143,9 +136,7 @@ export const listFiles = async (req: Request, res: Response): Promise<void> => {
     res.json({ data: { path: folderPath, directories, files } });
   } catch (error) {
     logger.error('Error listing files:', error);
-    res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to list files' }],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to list files');
   }
 };
 
@@ -155,32 +146,24 @@ export const uploadFile = async (req: Request, res: Response): Promise<void> => 
     const { path: folderPath = '' } = req.body as { path?: unknown };
 
     if (!req.userId) {
-      res.status(401).json({
-        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-      });
+      sendError(res, 401, 'Unauthorized', 'Authentication required');
       return;
     }
 
     if (!isSafePath(folderPath)) {
-      res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid path' }],
-      });
+      sendError(res, 400, 'Bad Request', 'Invalid path');
       return;
     }
 
     const room = await resolveRoom(roomId);
     if (!room) {
-      res.status(404).json({
-        errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }],
-      });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
     const file = req.file;
     if (!file) {
-      res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'No file uploaded' }],
-      });
+      sendError(res, 400, 'Bad Request', 'No file uploaded');
       return;
     }
 
@@ -200,9 +183,7 @@ export const uploadFile = async (req: Request, res: Response): Promise<void> => 
     res.status(201).json({ data: { url, name: filename, path: folderPath } });
   } catch (error) {
     logger.error('Error uploading file:', error);
-    res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to upload file' }],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to upload file');
   }
 };
 
@@ -215,16 +196,12 @@ export const deleteFile = async (req: Request, res: Response): Promise<void> => 
     };
 
     if (!req.userId) {
-      res.status(401).json({
-        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-      });
+      sendError(res, 401, 'Unauthorized', 'Authentication required');
       return;
     }
 
     if (!isSafePath(folderPath)) {
-      res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid path' }],
-      });
+      sendError(res, 400, 'Bad Request', 'Invalid path');
       return;
     }
 
@@ -234,26 +211,18 @@ export const deleteFile = async (req: Request, res: Response): Promise<void> => 
       filename.includes('/') ||
       filename.includes('..')
     ) {
-      res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid filename' }],
-      });
+      sendError(res, 400, 'Bad Request', 'Invalid filename');
       return;
     }
 
     const room = await resolveRoom(roomId);
     if (!room) {
-      res.status(404).json({
-        errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }],
-      });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
     if (room.createdById !== req.userId) {
-      res.status(403).json({
-        errors: [
-          { status: '403', title: 'Forbidden', detail: 'Only the room creator can delete files' },
-        ],
-      });
+      sendError(res, 403, 'Forbidden', 'Only the room creator can delete files');
       return;
     }
 
@@ -262,16 +231,12 @@ export const deleteFile = async (req: Request, res: Response): Promise<void> => 
     const filePath = path.join(dir, filename);
 
     if (!filePath.startsWith(base + path.sep)) {
-      res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid file path' }],
-      });
+      sendError(res, 400, 'Bad Request', 'Invalid file path');
       return;
     }
 
     if (!fs.existsSync(filePath)) {
-      res.status(404).json({
-        errors: [{ status: '404', title: 'Not Found', detail: 'File not found' }],
-      });
+      sendError(res, 404, 'Not Found', 'File not found');
       return;
     }
 
@@ -289,9 +254,7 @@ export const deleteFile = async (req: Request, res: Response): Promise<void> => 
     res.status(200).json({ data: { deleted: true } });
   } catch (error) {
     logger.error('Error deleting file:', error);
-    res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to delete file' }],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to delete file');
   }
 };
 
@@ -301,23 +264,17 @@ export const createFolder = async (req: Request, res: Response): Promise<void> =
     const { path: folderPath } = req.body as { path?: unknown };
 
     if (!req.userId) {
-      res.status(401).json({
-        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-      });
+      sendError(res, 401, 'Unauthorized', 'Authentication required');
       return;
     }
     if (!isSafePath(folderPath)) {
-      res
-        .status(400)
-        .json({ errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid path' }] });
+      sendError(res, 400, 'Bad Request', 'Invalid path');
       return;
     }
 
     const room = await resolveRoom(roomId);
     if (!room) {
-      res
-        .status(404)
-        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
@@ -326,11 +283,7 @@ export const createFolder = async (req: Request, res: Response): Promise<void> =
     res.status(201).json({ data: { path: folderPath } });
   } catch (error) {
     logger.error('Error creating folder:', error);
-    res.status(500).json({
-      errors: [
-        { status: '500', title: 'Internal Server Error', detail: 'Failed to create folder' },
-      ],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to create folder');
   }
 };
 
@@ -340,23 +293,17 @@ export const moveFile = async (req: Request, res: Response): Promise<void> => {
     const { from, to } = req.body as { from?: unknown; to?: unknown };
 
     if (!req.userId) {
-      res.status(401).json({
-        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
-      });
+      sendError(res, 401, 'Unauthorized', 'Authentication required');
       return;
     }
     if (!isSafeFilePath(from) || !isSafeFilePath(to)) {
-      res
-        .status(400)
-        .json({ errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid path' }] });
+      sendError(res, 400, 'Bad Request', 'Invalid path');
       return;
     }
 
     const room = await resolveRoom(roomId);
     if (!room) {
-      res
-        .status(404)
-        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
@@ -365,15 +312,11 @@ export const moveFile = async (req: Request, res: Response): Promise<void> => {
     const toPath = path.join(base, ...(to as string).split('/'));
 
     if (!fromPath.startsWith(base + path.sep) || !toPath.startsWith(base + path.sep)) {
-      res
-        .status(400)
-        .json({ errors: [{ status: '400', title: 'Bad Request', detail: 'Invalid file path' }] });
+      sendError(res, 400, 'Bad Request', 'Invalid file path');
       return;
     }
     if (!fs.existsSync(fromPath)) {
-      res
-        .status(404)
-        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Source file not found' }] });
+      sendError(res, 404, 'Not Found', 'Source file not found');
       return;
     }
 
@@ -384,9 +327,7 @@ export const moveFile = async (req: Request, res: Response): Promise<void> => {
     res.json({ data: { url: newUrl } });
   } catch (error) {
     logger.error('Error moving file:', error);
-    res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to move file' }],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to move file');
   }
 };
 
@@ -395,9 +336,7 @@ export const getHandoutShares = async (req: Request, res: Response): Promise<voi
     const { roomId } = req.params;
     const room = await resolveRoom(roomId);
     if (!room) {
-      res
-        .status(404)
-        .json({ errors: [{ status: '404', title: 'Not Found', detail: 'Room not found' }] });
+      sendError(res, 404, 'Not Found', 'Room not found');
       return;
     }
 
@@ -410,14 +349,6 @@ export const getHandoutShares = async (req: Request, res: Response): Promise<voi
     res.json({ data: { shared: [...shared] } });
   } catch (error) {
     logger.error('Error fetching handout shares:', error);
-    res.status(500).json({
-      errors: [
-        {
-          status: '500',
-          title: 'Internal Server Error',
-          detail: 'Failed to fetch handout shares',
-        },
-      ],
-    });
+    sendError(res, 500, 'Internal Server Error', 'Failed to fetch handout shares');
   }
 };
