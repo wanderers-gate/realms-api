@@ -10,7 +10,7 @@ async function isGM(roomId: string, authenticatedUserId: string | undefined): Pr
   return room?.createdById === authenticatedUserId;
 }
 
-export function registerSheetHandlers(socket: Socket, io: Server): void {
+export function registerSheetHandlers(socket: Socket, _io: Server): void {
   socket.on(
     'sheet-data-updated',
     async (data: { roomId: string; sheetId: string; sheetData: Record<string, unknown> }) => {
@@ -40,7 +40,7 @@ export function registerSheetHandlers(socket: Socket, io: Server): void {
 
         logger.info(`[SHEETS] sheet-data-updated for sheet ${data.sheetId}`);
       } catch (error) {
-        logger.error(`[SHEETS] Error handling sheet-data-updated:`, error);
+        logger.error('[SHEETS] Error handling sheet-data-updated:', error);
       }
     }
   );

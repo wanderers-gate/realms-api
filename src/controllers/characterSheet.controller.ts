@@ -15,7 +15,11 @@ const isGM = async (roomId: string, userId: string): Promise<boolean> => {
 
 export const createSheet = async (req: Request, res: Response) => {
   try {
-    const userId = req.userId!;
+    const userId = req.userId;
+    if (!userId)
+      return res.status(401).json({
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+      });
     const { roomId, systemId, name, isNpc, sheetData } = req.body;
 
     if (!roomId || !systemId || !name) {
@@ -120,7 +124,11 @@ export const getSheet = async (req: Request, res: Response) => {
 export const updateSheet = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.userId!;
+    const userId = req.userId;
+    if (!userId)
+      return res.status(401).json({
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+      });
 
     const sheet = await db.query.characterSheets.findFirst({
       where: eq(characterSheets.id, id),
@@ -175,7 +183,11 @@ export const updateSheet = async (req: Request, res: Response) => {
 export const deleteSheet = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const userId = req.userId!;
+    const userId = req.userId;
+    if (!userId)
+      return res.status(401).json({
+        errors: [{ status: '401', title: 'Unauthorized', detail: 'Authentication required' }],
+      });
 
     const sheet = await db.query.characterSheets.findFirst({
       where: eq(characterSheets.id, id),

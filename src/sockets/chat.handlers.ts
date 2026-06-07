@@ -1,7 +1,7 @@
 import type { Server, Socket } from 'socket.io';
 import { chatService } from '../services/chat.service';
 import logger from '../utils/logger';
-import { normalizeDiceRoll, parseAndRoll } from './helpers/dice';
+import { type DiceRollResult, normalizeDiceRoll, parseAndRoll } from './helpers/dice';
 import type { RoomState } from './types';
 
 export function registerChatHandlers(
@@ -44,55 +44,61 @@ export function registerChatHandlers(
     }
   );
 
-  socket.on('send-message', async (message: string) => {
-    const roomId = userRooms.get(socket.id);
-    if (!roomId) return;
+  socket.on(
+    'send-message',
+    async (message: string, ack?: (msg: { diceRoll?: DiceRollResult }) => void) => {
+      const roomId = userRooms.get(socket.id);
+      if (!roomId) return;
 
-    const username = socket.username || 'Unknown User';
-    const rollMatch = message.match(/^\/r(?:oll)?\s+(.+)$/i);
-    const diceRoll = rollMatch ? parseAndRoll(rollMatch[1]) : null;
+      const username = socket.username || 'Unknown User';
+      const rollMatch = message.match(/^\/r(?:oll)?\s+(.+)$/i);
+      const diceRoll = rollMatch ? parseAndRoll(rollMatch[1]) : null;
 
-    if (rollMatch && !diceRoll) return;
+      if (rollMatch && !diceRoll) return;
 
-    const displayMessage = diceRoll ? `/roll ${diceRoll.notation}` : message;
+      const displayMessage = diceRoll ? `/roll ${diceRoll.notation}` : message;
 
-    try {
-      const savedMessage = await chatService.saveMessage(
-        roomId,
-        socket.authenticatedUserId ?? socket.id,
-        username,
-        displayMessage,
-        diceRoll ?? undefined
-      );
+      try {
+        const savedMessage = await chatService.saveMessage(
+          roomId,
+          socket.authenticatedUserId ?? socket.id,
+          username,
+          displayMessage,
+          diceRoll ?? undefined
+        );
 
-      const chatMessage = {
-        id: savedMessage.id,
-        userId: socket.authenticatedUserId ?? socket.id,
-        username,
-        message: displayMessage,
-        timestamp: savedMessage.timestamp ?? new Date(),
-        ...(diceRoll && { diceRoll }),
-      };
+        const chatMessage = {
+          id: savedMessage.id,
+          userId: socket.authenticatedUserId ?? socket.id,
+          username,
+          message: displayMessage,
+          timestamp: savedMessage.timestamp ?? new Date(),
+          ...(diceRoll && { diceRoll }),
+        };
 
-      const room = rooms.get(roomId);
-      if (room) {
-        room.messages.push(chatMessage);
-        if (room.messages.length > 100) {
-          room.messages = room.messages.slice(-100);
+        const room = rooms.get(roomId);
+        if (room) {
+          room.messages.push(chatMessage);
+          if (room.messages.length > 100) {
+            room.messages = room.messages.slice(-100);
+          }
         }
-      }
 
-      io.to(roomId).emit('new-message', chatMessage);
-    } catch (error) {
-      logger.error('[CHAT] Error saving message to database:', error);
-      io.to(roomId).emit('new-message', {
-        id: Date.now().toString(),
-        userId: socket.id,
-        username,
-        message: displayMessage,
-        timestamp: new Date(),
-        ...(diceRoll && { diceRoll }),
-      });
+        io.to(roomId).emit('new-message', chatMessage);
+        if (typeof ack === 'function') ack(chatMessage);
+      } catch (error) {
+        logger.error('[CHAT] Error saving message to database:', error);
+        const fallback = {
+          id: Date.now().toString(),
+          userId: socket.id,
+          username,
+          message: displayMessage,
+          timestamp: new Date(),
+          ...(diceRoll && { diceRoll }),
+        };
+        io.to(roomId).emit('new-message', fallback);
+        if (typeof ack === 'function') ack(fallback);
+      }
     }
-  });
+  );
 }
