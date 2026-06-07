@@ -6,6 +6,7 @@ import logger from '../utils/logger';
 
 export interface Combatant {
   id: string;
+  tokenId?: string;
   name: string;
   initiative: number;
   hp: number;

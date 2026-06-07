@@ -1,8 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 import type { Server, Socket } from 'socket.io';
 import { db } from '../db';
-import { characterSheets, rooms, tokens } from '../db/schema';
+import { characterSheets, initiativeTrackers, rooms, tokens } from '../db/schema';
 import logger from '../utils/logger';
+import { loadInitiativeState } from './initiative.handlers';
 import type { Token } from './types';
 
 async function isGM(roomId: string, authenticatedUserId: string | undefined): Promise<boolean> {
@@ -234,6 +235,23 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
 
       await db.delete(tokens).where(eq(tokens.tokenId, data.tokenId));
       io.to(data.roomId).emit('token-deleted', { tokenId: data.tokenId });
+
+      // Remove combatant from initiative tracker if present
+      const initiativeState = await loadInitiativeState(data.roomId);
+      if (initiativeState.combatants.some((c) => c.tokenId === data.tokenId)) {
+        const nextState = {
+          ...initiativeState,
+          combatants: initiativeState.combatants.filter((c) => c.tokenId !== data.tokenId),
+        };
+        await db
+          .insert(initiativeTrackers)
+          .values({ roomId: data.roomId, state: nextState })
+          .onConflictDoUpdate({
+            target: initiativeTrackers.roomId,
+            set: { state: nextState, updatedAt: new Date() },
+          });
+        io.to(data.roomId).emit('initiative-updated', nextState);
+      }
 
       // Clear the token link on any sheet that referenced this token
       const linkedSheet = await db.query.characterSheets.findFirst({
