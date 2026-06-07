@@ -66,6 +66,7 @@ export const createRoom = async (req: Request, res: Response) => {
       name,
       description,
       maxPlayers,
+      systemId,
       settings,
       roomCode: requestedCode,
     } = deserializeRoom(req.body);
@@ -100,6 +101,7 @@ export const createRoom = async (req: Request, res: Response) => {
         roomCode,
         createdById: userId,
         maxPlayers: maxPlayers || 10,
+        systemId: systemId || 'dnd5e',
         isPrivate: settings?.isPrivate ?? false,
         allowGuests: settings?.allowGuests ?? true,
         gridSize: settings?.gridSize ?? 50,
