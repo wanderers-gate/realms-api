@@ -29,11 +29,13 @@ function resolveShorthand(input: string): string {
 }
 
 function extractModifier(notation: string): number {
-  const withoutGroups = notation.replace(/\d+d\d+(?:(?:kh|kl)\d*)?/gi, '');
-  const cleaned = withoutGroups.replace(/\++/g, '+').replace(/^[+]/, '').replace(/[+]$/, '').trim();
-  if (!cleaned) return 0;
-  const match = cleaned.match(/^([+-]?\d+)$/);
-  return match ? Number.parseInt(match[1], 10) : 0;
+  const withoutGroups = notation.replace(/\s/g, '').replace(/\d+d\d+(?:(?:kh|kl)\d*)?/gi, '');
+  if (!withoutGroups) return 0;
+  let sum = 0;
+  for (const m of withoutGroups.matchAll(/([+-]?\d+)/g)) {
+    sum += Number.parseInt(m[1], 10);
+  }
+  return sum;
 }
 
 export function normalizeDiceRoll(raw: Record<string, unknown>): DiceRollResult {
@@ -63,7 +65,7 @@ export function normalizeDiceRoll(raw: Record<string, unknown>): DiceRollResult 
 }
 
 export function parseAndRoll(rawInput: string): DiceRollResult | null {
-  const input = resolveShorthand(rawInput.trim());
+  const input = resolveShorthand(rawInput.trim().replace(/\s*\[.*?\]\s*$/, ''));
 
   const groupMatches = [...input.matchAll(/(\d+)d(\d+)(?:(kh|kl)(\d+)?)?/gi)];
   if (groupMatches.length === 0) return null;

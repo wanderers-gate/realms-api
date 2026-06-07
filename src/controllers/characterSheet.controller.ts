@@ -20,7 +20,13 @@ export const createSheet = async (req: Request, res: Response) => {
 
     if (!roomId || !systemId || !name) {
       return res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'roomId, systemId, and name are required' }],
+        errors: [
+          {
+            status: '400',
+            title: 'Bad Request',
+            detail: 'roomId, systemId, and name are required',
+          },
+        ],
       });
     }
 
@@ -52,7 +58,13 @@ export const createSheet = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error creating character sheet:', error);
     return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to create character sheet' }],
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'Failed to create character sheet',
+        },
+      ],
     });
   }
 };
@@ -68,7 +80,13 @@ export const getRoomSheets = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching character sheets:', error);
     return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to fetch character sheets' }],
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'Failed to fetch character sheets',
+        },
+      ],
     });
   }
 };
@@ -88,7 +106,13 @@ export const getSheet = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error fetching character sheet:', error);
     return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to fetch character sheet' }],
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'Failed to fetch character sheet',
+        },
+      ],
     });
   }
 };
@@ -110,7 +134,13 @@ export const updateSheet = async (req: Request, res: Response) => {
     const gm = await isGM(sheet.roomId, userId);
     if (sheet.ownerId !== userId && !gm) {
       return res.status(403).json({
-        errors: [{ status: '403', title: 'Forbidden', detail: 'Only the owner or GM can update this sheet' }],
+        errors: [
+          {
+            status: '403',
+            title: 'Forbidden',
+            detail: 'Only the owner or GM can update this sheet',
+          },
+        ],
       });
     }
 
@@ -131,7 +161,13 @@ export const updateSheet = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error updating character sheet:', error);
     return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to update character sheet' }],
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'Failed to update character sheet',
+        },
+      ],
     });
   }
 };
@@ -153,7 +189,13 @@ export const deleteSheet = async (req: Request, res: Response) => {
     const gm = await isGM(sheet.roomId, userId);
     if (sheet.ownerId !== userId && !gm) {
       return res.status(403).json({
-        errors: [{ status: '403', title: 'Forbidden', detail: 'Only the owner or GM can delete this sheet' }],
+        errors: [
+          {
+            status: '403',
+            title: 'Forbidden',
+            detail: 'Only the owner or GM can delete this sheet',
+          },
+        ],
       });
     }
 
@@ -169,7 +211,13 @@ export const deleteSheet = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error deleting character sheet:', error);
     return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to delete character sheet' }],
+      errors: [
+        {
+          status: '500',
+          title: 'Internal Server Error',
+          detail: 'Failed to delete character sheet',
+        },
+      ],
     });
   }
 };
