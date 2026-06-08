@@ -12,6 +12,7 @@ export type DiceRollResult = {
   modifier: number;
   total: number;
   advantage?: 'advantage' | 'disadvantage';
+  label?: string;
 };
 
 const VALID_DIE_SIZES = [2, 4, 6, 8, 10, 12, 20, 100];
@@ -65,7 +66,10 @@ export function normalizeDiceRoll(raw: Record<string, unknown>): DiceRollResult 
 }
 
 export function parseAndRoll(rawInput: string): DiceRollResult | null {
-  const input = resolveShorthand(rawInput.trim().replace(/\s*\[.*?\]\s*$/, ''));
+  const trimmed = rawInput.trim();
+  const labelMatch = trimmed.match(/\[(.+?)\]\s*$/);
+  const label = labelMatch?.[1]?.trim();
+  const input = resolveShorthand(trimmed.replace(/\s*\[.*?\]\s*$/, ''));
 
   const groupMatches = [...input.matchAll(/(\d+)d(\d+)(?:(kh|kl)(\d+)?)?/gi)];
   if (groupMatches.length === 0) return null;
@@ -120,5 +124,5 @@ export function parseAndRoll(rawInput: string): DiceRollResult | null {
     }
   }
 
-  return { notation, groups, modifier, total, advantage };
+  return { notation, groups, modifier, total, advantage, ...(label && { label }) };
 }
