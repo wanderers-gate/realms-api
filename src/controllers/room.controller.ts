@@ -2,8 +2,8 @@ import { and, count, desc, eq, like, or } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import { db } from '../db';
 import { rooms, users } from '../db/schema';
-import { createRoomDirs, renameRoomDir, slugify } from '../helpers/storage';
 import { sendError } from '../helpers/response';
+import { createRoomDirs, renameRoomDir, slugify } from '../helpers/storage';
 import {
   type Room,
   deserializeRoom,
@@ -79,7 +79,12 @@ export const createRoom = async (req: Request, res: Response) => {
 
     if (requestedCode) {
       if (!/^[A-Z0-9]{4,10}$/i.test(requestedCode)) {
-        return sendError(res, 400, 'Bad Request', 'Room code must be 4–10 letters and numbers only');
+        return sendError(
+          res,
+          400,
+          'Bad Request',
+          'Room code must be 4–10 letters and numbers only'
+        );
       }
       const takenCode = await db.query.rooms.findFirst({
         where: eq(rooms.roomCode, requestedCode.toUpperCase()),

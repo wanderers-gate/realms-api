@@ -348,9 +348,7 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
         // Notify linked sheet when hp or conditions changed (not initiative — that's handled
         // separately by initiative-update-combatant and does not belong in the sheet stats sync)
         const statsChanged =
-          data.hp !== undefined ||
-          data.maxHp !== undefined ||
-          data.conditions !== undefined;
+          data.hp !== undefined || data.maxHp !== undefined || data.conditions !== undefined;
         if (statsChanged) {
           const linkedSheet = await db.query.characterSheets.findFirst({
             where: eq(characterSheets.tokenId, data.tokenId),

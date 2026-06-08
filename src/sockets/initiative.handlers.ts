@@ -87,39 +87,44 @@ export function registerInitiativeHandlers(socket: Socket, io: Server): void {
     }
   });
 
-  socket.on(
-    'initiative-add-combatant',
-    async (data: { roomId: string; combatant: Combatant }) => {
-      try {
-        const { combatant } = data;
-        if (!combatant.tokenId) return;
+  socket.on('initiative-add-combatant', async (data: { roomId: string; combatant: Combatant }) => {
+    try {
+      const { combatant } = data;
+      if (!combatant.tokenId) return;
 
-        const allowed = await isTokenOwnerOrGM(data.roomId, combatant.tokenId, socket.authenticatedUserId);
-        if (!allowed) return;
+      const allowed = await isTokenOwnerOrGM(
+        data.roomId,
+        combatant.tokenId,
+        socket.authenticatedUserId
+      );
+      if (!allowed) return;
 
-        const state = await loadInitiativeState(data.roomId);
-        if (state.combatants.some((c) => c.tokenId === combatant.tokenId)) return;
+      const state = await loadInitiativeState(data.roomId);
+      if (state.combatants.some((c) => c.tokenId === combatant.tokenId)) return;
 
-        const insertAt = state.combatants.findIndex((c) => c.initiative < combatant.initiative);
-        const newList = [...state.combatants];
-        if (insertAt === -1) newList.push(combatant);
-        else newList.splice(insertAt, 0, combatant);
+      const insertAt = state.combatants.findIndex((c) => c.initiative < combatant.initiative);
+      const newList = [...state.combatants];
+      if (insertAt === -1) newList.push(combatant);
+      else newList.splice(insertAt, 0, combatant);
 
-        const newState = { ...state, combatants: newList };
-        await saveInitiativeState(data.roomId, newState);
-        io.to(data.roomId).emit('initiative-updated', newState);
-        logger.info(`[INITIATIVE] Added combatant ${combatant.tokenId} to room ${data.roomId}`);
-      } catch (error) {
-        logger.error(`[INITIATIVE] Error adding combatant in room ${data.roomId}:`, error);
-      }
+      const newState = { ...state, combatants: newList };
+      await saveInitiativeState(data.roomId, newState);
+      io.to(data.roomId).emit('initiative-updated', newState);
+      logger.info(`[INITIATIVE] Added combatant ${combatant.tokenId} to room ${data.roomId}`);
+    } catch (error) {
+      logger.error(`[INITIATIVE] Error adding combatant in room ${data.roomId}:`, error);
     }
-  );
+  });
 
   socket.on(
     'initiative-update-combatant',
     async (data: { roomId: string; tokenId: string; initiative: number }) => {
       try {
-        const allowed = await isTokenOwnerOrGM(data.roomId, data.tokenId, socket.authenticatedUserId);
+        const allowed = await isTokenOwnerOrGM(
+          data.roomId,
+          data.tokenId,
+          socket.authenticatedUserId
+        );
         if (!allowed) return;
 
         const state = await loadInitiativeState(data.roomId);
@@ -132,9 +137,14 @@ export function registerInitiativeHandlers(socket: Socket, io: Server): void {
         const newState = { ...state, combatants: newCombatants };
         await saveInitiativeState(data.roomId, newState);
         io.to(data.roomId).emit('initiative-updated', newState);
-        logger.info(`[INITIATIVE] Updated initiative for combatant ${data.tokenId} in room ${data.roomId}`);
+        logger.info(
+          `[INITIATIVE] Updated initiative for combatant ${data.tokenId} in room ${data.roomId}`
+        );
       } catch (error) {
-        logger.error(`[INITIATIVE] Error updating combatant initiative in room ${data.roomId}:`, error);
+        logger.error(
+          `[INITIATIVE] Error updating combatant initiative in room ${data.roomId}:`,
+          error
+        );
       }
     }
   );
