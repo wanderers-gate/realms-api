@@ -71,6 +71,7 @@ export const createRoom = async (req: Request, res: Response) => {
       roomCode: requestedCode,
     } = deserializeRoom(req.body);
     if (!name) return sendError(res, 400, 'Bad Request', 'Room name is required');
+    if (!systemId) return sendError(res, 400, 'Bad Request', 'Game system is required');
 
     const existing = await db.query.rooms.findFirst({ where: eq(rooms.name, name) });
     if (existing) {
@@ -106,7 +107,7 @@ export const createRoom = async (req: Request, res: Response) => {
         roomCode,
         createdById: userId,
         maxPlayers: maxPlayers || 10,
-        systemId: systemId || 'dnd5e',
+        systemId,
         isPrivate: settings?.isPrivate ?? false,
         allowGuests: settings?.allowGuests ?? true,
         gridSize: settings?.gridSize ?? 50,

@@ -153,6 +153,7 @@ describe('Room Controller', () => {
             name: 'Test Room',
             description: 'A test room',
             maxPlayers: 5,
+            systemId: 'test-system',
             settings: { isPrivate: false, allowGuests: true, gridSize: 50 },
           },
         },
@@ -227,7 +228,7 @@ describe('Room Controller', () => {
         mockRoom
       );
 
-      const req = mockRequest({ attributes: { name: 'Test Room' } }, {}, {}, TEST_USER_ID);
+      const req = mockRequest({ attributes: { name: 'Test Room', systemId: 'test-system' } }, {}, {}, TEST_USER_ID);
       const res = mockResponse();
 
       await createRoom(req, res);

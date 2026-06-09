@@ -48,7 +48,7 @@ export const rooms = sqliteTable('rooms', {
   gridOpacity: real('grid_opacity').default(0.6),
   canvasWidth: integer('canvas_width').default(3000),
   canvasHeight: integer('canvas_height').default(2000),
-  systemId: text('system_id').notNull().default('dnd5e'),
+  systemId: text('system_id').notNull(),
   ...timestamps(),
 });
 
