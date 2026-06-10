@@ -9,6 +9,7 @@ type RoomInput = {
   description?: string;
   roomCode?: string;
   maxPlayers?: number;
+  systemId?: string;
   settings?: {
     isPrivate?: boolean;
     allowGuests?: boolean;
@@ -33,6 +34,7 @@ const serializeRoomResource = (room: Room): JsonApiResourceObject => ({
     isActive: room.isActive,
     maxPlayers: room.maxPlayers,
     currentPlayers: room.currentPlayers,
+    systemId: room.systemId,
     lastActivity: room.lastActivity,
     createdAt: room.createdAt,
     updatedAt: room.updatedAt,
@@ -78,6 +80,7 @@ export const deserializeRoom = (resource: JsonApiResourceObject): RoomInput => {
   if (data.description !== undefined) result.description = data.description as string;
   if (data.roomCode !== undefined) result.roomCode = data.roomCode as string;
   if (data.maxPlayers !== undefined) result.maxPlayers = data.maxPlayers as number;
+  if (data.systemId !== undefined) result.systemId = data.systemId as string;
   if (data.settings !== undefined) result.settings = data.settings as RoomInput['settings'];
 
   return result;

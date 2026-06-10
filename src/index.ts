@@ -7,6 +7,7 @@ import { jsonApiMiddleware } from './middleware/json-api';
 import authProtectedRouter from './routes/authProtectedRouter';
 import authRouter from './routes/authRouter';
 import canvasRouter from './routes/canvasRouter';
+import characterSheetRouter from './routes/characterSheetRouter';
 import filesRouter from './routes/filesRouter';
 import playerRouter from './routes/playerRouter';
 import roomRouter from './routes/roomRouter';
@@ -51,6 +52,7 @@ app.use('/api/rooms', roomRouter);
 app.use('/api/canvas', canvasRouter);
 app.use('/api/files', filesRouter);
 app.use('/api/players', playerRouter);
+app.use('/api/character-sheets', characterSheetRouter);
 
 app.use(authenticate);
 app.use('/api/auth', authProtectedRouter);

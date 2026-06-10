@@ -34,6 +34,7 @@ describe('Room Serializer', () => {
     gridOpacity: 0.6,
     canvasWidth: 3000,
     canvasHeight: 2000,
+    systemId: 'dnd5e',
     createdAt: new Date('2024-01-01'),
     updatedAt: new Date('2024-01-01'),
   };

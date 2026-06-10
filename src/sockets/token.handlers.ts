@@ -1,8 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 import type { Server, Socket } from 'socket.io';
 import { db } from '../db';
-import { rooms, tokens } from '../db/schema';
+import { characterSheets, initiativeTrackers, rooms, tokens } from '../db/schema';
 import logger from '../utils/logger';
+import { loadInitiativeState } from './initiative.handlers';
 import type { Token } from './types';
 
 async function isGM(roomId: string, authenticatedUserId: string | undefined): Promise<boolean> {
@@ -62,11 +63,18 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
       imageScale?: number;
       ownerIds?: string[];
       visible?: boolean;
+      sheetId?: string;
+      hp?: number;
+      maxHp?: number;
+      conditions?: string[];
     }) => {
       try {
         const ownerId = socket.authenticatedUserId || socket.id;
         const ownerIds = data.ownerIds?.length ? data.ownerIds : [ownerId];
         const visible = data.visible ?? true;
+        const hp = data.hp ?? 0;
+        const maxHp = data.maxHp ?? 0;
+        const conditions = data.conditions ?? [];
         const tokenId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 
         await db.insert(tokens).values({
@@ -85,6 +93,9 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           ownerId,
           ownerIds,
           visible,
+          hp,
+          maxHp,
+          conditions,
         });
 
         const token: Token = {
@@ -103,11 +114,19 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
           ownerId,
           ownerIds,
           visible,
-          hp: 0,
-          maxHp: 0,
-          conditions: [],
+          hp,
+          maxHp,
+          conditions,
           initiative: 0,
         };
+
+        if (data.sheetId) {
+          await db
+            .update(characterSheets)
+            .set({ tokenId })
+            .where(eq(characterSheets.id, data.sheetId));
+          io.to(data.roomId).emit('sheet-token-linked', { sheetId: data.sheetId, tokenId });
+        }
 
         io.to(data.roomId).emit('token-added', token);
         logger.info(`[TOKEN] Added token ${tokenId} to room ${data.roomId}`);
@@ -216,6 +235,37 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
 
       await db.delete(tokens).where(eq(tokens.tokenId, data.tokenId));
       io.to(data.roomId).emit('token-deleted', { tokenId: data.tokenId });
+
+      // Remove combatant from initiative tracker if present
+      const initiativeState = await loadInitiativeState(data.roomId);
+      if (initiativeState.combatants.some((c) => c.tokenId === data.tokenId)) {
+        const nextState = {
+          ...initiativeState,
+          combatants: initiativeState.combatants.filter((c) => c.tokenId !== data.tokenId),
+        };
+        await db
+          .insert(initiativeTrackers)
+          .values({ roomId: data.roomId, state: nextState })
+          .onConflictDoUpdate({
+            target: initiativeTrackers.roomId,
+            set: { state: nextState, updatedAt: new Date() },
+          });
+        io.to(data.roomId).emit('initiative-updated', nextState);
+      }
+
+      // Clear the token link on any sheet that referenced this token
+      const linkedSheet = await db.query.characterSheets.findFirst({
+        where: eq(characterSheets.tokenId, data.tokenId),
+        columns: { id: true, roomId: true },
+      });
+      if (linkedSheet) {
+        await db
+          .update(characterSheets)
+          .set({ tokenId: null })
+          .where(eq(characterSheets.id, linkedSheet.id));
+        io.to(linkedSheet.roomId).emit('sheet-token-unlinked', { sheetId: linkedSheet.id });
+      }
+
       logger.info(`[TOKEN] Deleted token ${data.tokenId} from room ${data.roomId}`);
     } catch (error) {
       logger.error(`[TOKEN] Error deleting token ${data.tokenId}:`, error);
@@ -227,9 +277,9 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
     async (data: {
       roomId: string;
       tokenId: string;
-      color: string;
-      label: string;
-      imageUrl?: string;
+      color?: string;
+      label?: string;
+      imageUrl?: string | null;
       imageOffsetX?: number;
       imageOffsetY?: number;
       imageScale?: number;
@@ -252,35 +302,68 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
         )
           return;
 
+        // Only update fields that were explicitly provided; preserve everything else
+        const newColor = data.color ?? token.color;
+        const newLabel = data.label ?? token.label;
+        const newImageUrl = data.imageUrl !== undefined ? data.imageUrl : token.imageUrl;
+        const newImageOffsetX = data.imageOffsetX ?? token.imageOffsetX;
+        const newImageOffsetY = data.imageOffsetY ?? token.imageOffsetY;
+        const newImageScale = data.imageScale ?? token.imageScale;
+        const newHp = data.hp ?? token.hp;
+        const newMaxHp = data.maxHp ?? token.maxHp;
+        const newConditions = data.conditions ?? (token.conditions as string[]) ?? [];
+        const newInitiative = data.initiative ?? token.initiative;
+
         await db
           .update(tokens)
           .set({
-            color: data.color,
-            label: data.label,
-            imageUrl: data.imageUrl ?? null,
-            imageOffsetX: data.imageOffsetX ?? 0,
-            imageOffsetY: data.imageOffsetY ?? 0,
-            imageScale: data.imageScale ?? 1,
-            hp: data.hp ?? 0,
-            maxHp: data.maxHp ?? 0,
-            conditions: data.conditions ?? [],
-            initiative: data.initiative ?? 0,
+            color: newColor,
+            label: newLabel,
+            imageUrl: newImageUrl,
+            imageOffsetX: newImageOffsetX,
+            imageOffsetY: newImageOffsetY,
+            imageScale: newImageScale,
+            hp: newHp,
+            maxHp: newMaxHp,
+            conditions: newConditions,
+            initiative: newInitiative,
           })
           .where(eq(tokens.tokenId, data.tokenId));
+
         io.to(data.roomId).emit('token-edited', {
           tokenId: data.tokenId,
-          color: data.color,
-          label: data.label,
-          imageUrl: data.imageUrl,
-          imageOffsetX: data.imageOffsetX ?? 0,
-          imageOffsetY: data.imageOffsetY ?? 0,
-          imageScale: data.imageScale ?? 1,
-          hp: data.hp ?? 0,
-          maxHp: data.maxHp ?? 0,
-          conditions: data.conditions ?? [],
-          initiative: data.initiative ?? 0,
+          color: newColor,
+          label: newLabel,
+          imageUrl: newImageUrl,
+          imageOffsetX: newImageOffsetX,
+          imageOffsetY: newImageOffsetY,
+          imageScale: newImageScale,
+          hp: newHp,
+          maxHp: newMaxHp,
+          conditions: newConditions,
+          initiative: newInitiative,
         });
         logger.info(`[TOKEN] Edited token ${data.tokenId}`);
+
+        // Notify linked sheet when hp or conditions changed (not initiative — that's handled
+        // separately by initiative-update-combatant and does not belong in the sheet stats sync)
+        const statsChanged =
+          data.hp !== undefined || data.maxHp !== undefined || data.conditions !== undefined;
+        if (statsChanged) {
+          const linkedSheet = await db.query.characterSheets.findFirst({
+            where: eq(characterSheets.tokenId, data.tokenId),
+            columns: { id: true, roomId: true },
+          });
+          if (linkedSheet) {
+            io.to(linkedSheet.roomId).emit('sheet-stats-updated', {
+              sheetId: linkedSheet.id,
+              hp: newHp,
+              maxHp: newMaxHp,
+              initiative: newInitiative,
+              conditions: newConditions,
+            });
+          }
+        }
       } catch (error) {
         logger.error(`[TOKEN] Error editing token ${data.tokenId}:`, error);
       }
@@ -323,6 +406,52 @@ export function registerTokenHandlers(socket: Socket, io: Server): void {
         logger.info(`[TOKEN] Set token ${data.tokenId} visibility to ${data.visible}`);
       } catch (error) {
         logger.error(`[TOKEN] Error toggling visibility for token ${data.tokenId}:`, error);
+      }
+    }
+  );
+
+  // Emitted by frontend useSheetSync when sheetData changes on a linked sheet
+  socket.on(
+    'token-stats',
+    async (data: {
+      roomId: string;
+      tokenId: string;
+      hp: number;
+      maxHp: number;
+      conditions: string[];
+    }) => {
+      try {
+        const requesterId = socket.authenticatedUserId || socket.id;
+        const token = await db.query.tokens.findFirst({
+          where: and(eq(tokens.tokenId, data.tokenId), eq(tokens.roomId, data.roomId)),
+        });
+        if (!token) return;
+
+        const ownerIds = (token.ownerIds as string[]) ?? [token.ownerId];
+        if (
+          !(await isGM(data.roomId, socket.authenticatedUserId)) &&
+          !ownerIds.includes(requesterId)
+        )
+          return;
+
+        await db
+          .update(tokens)
+          .set({
+            hp: data.hp,
+            maxHp: data.maxHp,
+            conditions: data.conditions,
+          })
+          .where(eq(tokens.tokenId, data.tokenId));
+
+        io.to(data.roomId).emit('token-stats-updated', {
+          tokenId: data.tokenId,
+          hp: data.hp,
+          maxHp: data.maxHp,
+          conditions: data.conditions,
+        });
+        logger.info(`[TOKEN] Stats updated for token ${data.tokenId} from linked sheet`);
+      } catch (error) {
+        logger.error(`[TOKEN] Error handling token-stats for ${data.tokenId}:`, error);
       }
     }
   );

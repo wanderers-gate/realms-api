@@ -2,6 +2,7 @@ import { and, count, desc, eq, like, or } from 'drizzle-orm';
 import type { Request, Response } from 'express';
 import { db } from '../db';
 import { rooms, users } from '../db/schema';
+import { sendError } from '../helpers/response';
 import { createRoomDirs, renameRoomDir, slugify } from '../helpers/storage';
 import {
   type Room,
@@ -55,66 +56,41 @@ export const createRoom = async (req: Request, res: Response) => {
   try {
     const userId = req.userId;
     if (!userId) {
-      return res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User must be authenticated to create a room',
-          },
-        ],
-      });
+      return sendError(res, 401, 'Unauthorized', 'User must be authenticated to create a room');
     }
 
     const creator = await db.query.users.findFirst({ where: eq(users.id, userId) });
-    if (!creator) {
-      return res.status(404).json({
-        errors: [{ status: '404', title: 'User Not Found', detail: 'User not found' }],
-      });
-    }
+    if (!creator) return sendError(res, 404, 'User Not Found', 'User not found');
 
     const {
       name,
       description,
       maxPlayers,
+      systemId,
       settings,
       roomCode: requestedCode,
     } = deserializeRoom(req.body);
-    if (!name) {
-      return res.status(400).json({
-        errors: [{ status: '400', title: 'Bad Request', detail: 'Room name is required' }],
-      });
-    }
+    if (!name) return sendError(res, 400, 'Bad Request', 'Room name is required');
+    if (!systemId) return sendError(res, 400, 'Bad Request', 'Game system is required');
 
     const existing = await db.query.rooms.findFirst({ where: eq(rooms.name, name) });
     if (existing) {
-      return res.status(409).json({
-        errors: [
-          { status: '409', title: 'Conflict', detail: 'A room with that name already exists' },
-        ],
-      });
+      return sendError(res, 409, 'Conflict', 'A room with that name already exists');
     }
 
     if (requestedCode) {
       if (!/^[A-Z0-9]{4,10}$/i.test(requestedCode)) {
-        return res.status(400).json({
-          errors: [
-            {
-              status: '400',
-              title: 'Bad Request',
-              detail: 'Room code must be 4–10 letters and numbers only',
-            },
-          ],
-        });
+        return sendError(
+          res,
+          400,
+          'Bad Request',
+          'Room code must be 4–10 letters and numbers only'
+        );
       }
       const takenCode = await db.query.rooms.findFirst({
         where: eq(rooms.roomCode, requestedCode.toUpperCase()),
       });
-      if (takenCode) {
-        return res.status(409).json({
-          errors: [{ status: '409', title: 'Conflict', detail: 'That room code is already taken' }],
-        });
-      }
+      if (takenCode) return sendError(res, 409, 'Conflict', 'That room code is already taken');
     }
 
     const [slug, roomCode] = await Promise.all([
@@ -131,6 +107,7 @@ export const createRoom = async (req: Request, res: Response) => {
         roomCode,
         createdById: userId,
         maxPlayers: maxPlayers || 10,
+        systemId,
         isPrivate: settings?.isPrivate ?? false,
         allowGuests: settings?.allowGuests ?? true,
         gridSize: settings?.gridSize ?? 50,
@@ -148,9 +125,7 @@ export const createRoom = async (req: Request, res: Response) => {
     return res.status(201).json(serializeRoomWithCreator(room, creator));
   } catch (error) {
     logger.error('Error creating room:', error);
-    return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to create room' }],
-    });
+    return sendError(res, 500, 'Internal Server Error', 'Failed to create room');
   }
 };
 
@@ -210,9 +185,7 @@ export const getRooms = async (req: Request, res: Response) => {
     return res.json(response);
   } catch (error) {
     logger.error('Error fetching rooms:', error);
-    return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to fetch rooms' }],
-    });
+    return sendError(res, 500, 'Internal Server Error', 'Failed to fetch rooms');
   }
 };
 
@@ -233,23 +206,13 @@ export const getRoom = async (req: Request, res: Response) => {
       .limit(1);
 
     if (!result.length) {
-      return res.status(404).json({
-        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
-      });
+      return sendError(res, 404, 'Room Not Found', 'Room not found or inactive');
     }
 
     const { room, creator } = result[0];
 
     if (!req.userId && !room.allowGuests) {
-      return res.status(403).json({
-        errors: [
-          {
-            status: '403',
-            title: 'Access Denied',
-            detail: 'This room does not allow guest access',
-          },
-        ],
-      });
+      return sendError(res, 403, 'Access Denied', 'This room does not allow guest access');
     }
 
     return res.json(
@@ -257,9 +220,7 @@ export const getRoom = async (req: Request, res: Response) => {
     );
   } catch (error) {
     logger.error('Error fetching room:', error);
-    return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to fetch room' }],
-    });
+    return sendError(res, 500, 'Internal Server Error', 'Failed to fetch room');
   }
 };
 
@@ -269,37 +230,17 @@ export const updateRoom = async (req: Request, res: Response) => {
     const userId = req.userId;
 
     if (!userId) {
-      return res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User must be authenticated to update a room',
-          },
-        ],
-      });
+      return sendError(res, 401, 'Unauthorized', 'User must be authenticated to update a room');
     }
 
     const room = await db.query.rooms.findFirst({
       where: and(eq(rooms.id, roomId), eq(rooms.isActive, true)),
     });
 
-    if (!room) {
-      return res.status(404).json({
-        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
-      });
-    }
+    if (!room) return sendError(res, 404, 'Room Not Found', 'Room not found or inactive');
 
     if (room.createdById !== userId) {
-      return res.status(403).json({
-        errors: [
-          {
-            status: '403',
-            title: 'Forbidden',
-            detail: 'Only the room creator can update the room',
-          },
-        ],
-      });
+      return sendError(res, 403, 'Forbidden', 'Only the room creator can update the room');
     }
 
     const { name, description, maxPlayers, settings } = deserializeRoom(req.body);
@@ -308,11 +249,7 @@ export const updateRoom = async (req: Request, res: Response) => {
     if (name !== undefined && name !== room.name) {
       const existing = await db.query.rooms.findFirst({ where: eq(rooms.name, name) });
       if (existing) {
-        return res.status(409).json({
-          errors: [
-            { status: '409', title: 'Conflict', detail: 'A room with that name already exists' },
-          ],
-        });
+        return sendError(res, 409, 'Conflict', 'A room with that name already exists');
       }
       const newSlug = await generateUniqueSlug(name, room.id);
       renameRoomDir(room.slug, newSlug);
@@ -340,9 +277,7 @@ export const updateRoom = async (req: Request, res: Response) => {
     );
   } catch (error) {
     logger.error('Error updating room:', error);
-    return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to update room' }],
-    });
+    return sendError(res, 500, 'Internal Server Error', 'Failed to update room');
   }
 };
 
@@ -352,45 +287,23 @@ export const deleteRoom = async (req: Request, res: Response) => {
     const userId = req.userId;
 
     if (!userId) {
-      return res.status(401).json({
-        errors: [
-          {
-            status: '401',
-            title: 'Unauthorized',
-            detail: 'User must be authenticated to delete a room',
-          },
-        ],
-      });
+      return sendError(res, 401, 'Unauthorized', 'User must be authenticated to delete a room');
     }
 
     const room = await db.query.rooms.findFirst({
       where: and(eq(rooms.id, roomId), eq(rooms.isActive, true)),
     });
 
-    if (!room) {
-      return res.status(404).json({
-        errors: [{ status: '404', title: 'Room Not Found', detail: 'Room not found or inactive' }],
-      });
-    }
+    if (!room) return sendError(res, 404, 'Room Not Found', 'Room not found or inactive');
 
     if (room.createdById !== userId) {
-      return res.status(403).json({
-        errors: [
-          {
-            status: '403',
-            title: 'Forbidden',
-            detail: 'Only the room creator can delete the room',
-          },
-        ],
-      });
+      return sendError(res, 403, 'Forbidden', 'Only the room creator can delete the room');
     }
 
     await db.update(rooms).set({ isActive: false }).where(eq(rooms.id, room.id));
     return res.status(204).json({});
   } catch (error) {
     logger.error('Error deleting room:', error);
-    return res.status(500).json({
-      errors: [{ status: '500', title: 'Internal Server Error', detail: 'Failed to delete room' }],
-    });
+    return sendError(res, 500, 'Internal Server Error', 'Failed to delete room');
   }
 };
