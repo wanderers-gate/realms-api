@@ -1,3 +1,4 @@
+import path from 'node:path';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
@@ -54,9 +55,22 @@ app.use('/api/files', filesRouter);
 app.use('/api/players', playerRouter);
 app.use('/api/character-sheets', characterSheetRouter);
 
-app.use(authenticate);
-app.use('/api/auth', authProtectedRouter);
-app.use('/api/users', userRouter);
+app.use('/api/auth', authenticate, authProtectedRouter);
+app.use('/api/users', authenticate, userRouter);
+
+app.use('/api', (_req, res) => {
+  res.status(404).json({
+    errors: [{ status: '404', title: 'Not Found', detail: 'The requested resource was not found' }],
+  });
+});
+
+if (config.nodeEnv === 'production') {
+  app.use(express.static(config.staticDir));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/uploads') || req.path.startsWith('/socket.io')) return next();
+    res.sendFile(path.join(config.staticDir, 'index.html'));
+  });
+}
 
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   logger.error('Unhandled error:', err.stack);

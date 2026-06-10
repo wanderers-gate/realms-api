@@ -1,37 +1,34 @@
 const esbuild = require('esbuild');
 const { execSync } = require('child_process');
 const fs = require('fs');
-const path = require('path');
 
 try {
-  // Get the current SHA
-  const sha = execSync('git rev-parse HEAD').toString().trim();
-
-  // Clean dist directory
-  if (fs.existsSync('dist')) {
-    fs.rmSync('dist', { recursive: true });
+  let sha = 'unknown';
+  try {
+    sha = execSync('git rev-parse HEAD').toString().trim();
+  } catch {
+    console.warn('Could not determine git sha; building without version info');
   }
+
+  fs.rmSync('dist', { recursive: true, force: true });
   fs.mkdirSync('dist');
 
-  // Build with esbuild
   esbuild.buildSync({
     entryPoints: ['src/server.ts'],
     bundle: true,
     platform: 'node',
-    target: 'node18',
-    outfile: `dist/server.${sha}.js`,
+    target: 'node20',
+    outfile: 'dist/server.js',
     format: 'cjs',
     sourcemap: true,
-    external: ['mongoose', 'express', 'dotenv'],
+    // Native modules cannot be bundled
+    external: ['better-sqlite3', 'argon2'],
+    define: { 'process.env.BUILD_SHA': JSON.stringify(sha) },
   });
-
-  // Create a symlink for server.js
-  fs.symlinkSync(`server.${sha}.js`, 'dist/server.js');
-  fs.symlinkSync(`server.${sha}.js.map`, 'dist/server.js.map');
 
   console.log('Build completed successfully!');
   console.log(`Version: ${sha}`);
 } catch (error) {
   console.error('Build failed:', error);
   process.exit(1);
-} 
+}

@@ -9,6 +9,7 @@ interface Config {
   jwtSecret: string;
   allowedOrigins: string[];
   dataDir: string;
+  staticDir: string;
   database: {
     provider: 'sqlite' | 'postgresql';
     url: string;
@@ -30,6 +31,9 @@ const config: Config = {
         'https://realmsapp.io',
       ],
   dataDir: process.env.REALMS_DATA_DIR || path.join(__dirname, '../../../realms_data'),
+  staticDir: process.env.REALMS_STATIC_DIR
+    ? path.resolve(process.env.REALMS_STATIC_DIR)
+    : path.join(__dirname, '../public'),
   database: {
     provider: (process.env.DATABASE_PROVIDER as 'sqlite' | 'postgresql') || 'sqlite',
     url:

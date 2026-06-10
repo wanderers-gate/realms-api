@@ -6,7 +6,8 @@ import logger from '../utils/logger';
 const runMigrations = (): void => {
   try {
     logger.info('Running database migrations...');
-    migrate(db, { migrationsFolder: path.join(__dirname, '../../drizzle') });
+    // Resolved from cwd, not __dirname: the esbuild bundle puts __dirname at dist/
+    migrate(db, { migrationsFolder: path.join(process.cwd(), 'drizzle') });
     logger.info('Database migrations completed successfully');
   } catch (error) {
     logger.error('Database migration error:', error);
