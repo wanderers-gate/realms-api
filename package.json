@@ -6,8 +6,6 @@
     "build": "node build.js",
     "start": "node dist/server.js",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-    "dev:local": "USE_K8S_DB=false ts-node-dev --respawn --transpile-only src/server.ts",
-    "dev:k8s": "USE_K8S_DB=true ts-node-dev --respawn --transpile-only src/server.ts",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint src/",
     "format": "biome format --write src/",

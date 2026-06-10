@@ -228,7 +228,12 @@ describe('Room Controller', () => {
         mockRoom
       );
 
-      const req = mockRequest({ attributes: { name: 'Test Room', systemId: 'test-system' } }, {}, {}, TEST_USER_ID);
+      const req = mockRequest(
+        { attributes: { name: 'Test Room', systemId: 'test-system' } },
+        {},
+        {},
+        TEST_USER_ID
+      );
       const res = mockResponse();
 
       await createRoom(req, res);
